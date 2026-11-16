@@ -1,0 +1,6 @@
+{
+  "name": "Andrés Camilo Vidal Canchón",
+  "description": "Sitio oficial, trayectoria comunitaria y panel administrativo de Andrés Camilo Vidal Canchón (Comuna 8 de Pasto).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
