@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { PublicPortrait } from '../../components/PublicPortrait';
 import { usePublicData } from '../../context/PublicDataContext';
 
 const KNOWLEDGE_AREAS = [
@@ -15,16 +16,21 @@ export function VidaPersonalPage() {
 
   return (
     <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 space-y-12">
-      <header className="space-y-4 border-b border-[var(--border-hairline)] pb-8">
-        <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
-          Vida personal · Información autorizada
-        </p>
-        <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
-          Orígenes, formación y vocación de servicio
-        </h1>
-        <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
-          Esta sección reúne únicamente datos confirmados y autorizados por Andrés Camilo Vidal Canchón sobre su infancia, formación académica e intereses cívicos. No incluye especulaciones ni información familiar no publicada.
-        </p>
+      <header className="border-b border-[var(--border-hairline)] pb-8">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_15rem] gap-8 items-center">
+          <div className="space-y-4">
+            <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
+              Vida personal · Información autorizada
+            </p>
+            <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
+              Orígenes, formación y vocación de servicio
+            </h1>
+            <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
+              Esta sección reúne únicamente datos confirmados y autorizados por Andrés Camilo Vidal Canchón sobre su infancia, formación académica e intereses cívicos. No incluye especulaciones ni información familiar no publicada.
+            </p>
+          </div>
+          <PublicPortrait src={settings?.authorizedPhotoUrl} />
+        </div>
       </header>
 
       <section className="space-y-5">

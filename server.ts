@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +23,7 @@ async function bootstrap() {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '512kb' }));
+  app.use(express.json({ limit: '7mb' }));
 
   // Basic security headers
   app.use((_req, res, next) => {
@@ -43,7 +44,7 @@ async function bootstrap() {
   app.get('/api/public/content', async (_req, res) => {
     try {
       const records = await sheetsService.getPublicRecords();
-      const settings = sheetsService.getSettings();
+      const settings = await sheetsService.getPublicSettings();
       res.json({ records, settings });
     } catch {
       res.status(500).json({ error: 'No fue posible cargar la información pública.' });
@@ -105,10 +106,91 @@ async function bootstrap() {
     try {
       const records = await sheetsService.getAllRecords(forceSync);
       const sheetsStatus = sheetsService.getSheetsStatus();
-      const settings = sheetsService.getSettings();
+      const settings = await sheetsService.getPublicSettings();
       res.json({ records, sheetsStatus, settings });
     } catch {
       res.status(500).json({ error: 'No fue posible consultar los registros administrativos.' });
+    }
+  });
+
+  adminRouter.get('/sheets/tabs', async (_req, res) => {
+    try {
+      const tabs = await sheetsService.listSpreadsheetTabs();
+      res.json({ tabs });
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'No fue posible consultar las hojas.' });
+    }
+  });
+
+  adminRouter.get('/sheets/tab', async (req, res) => {
+    const title = typeof req.query.name === 'string' ? req.query.name : '';
+    if (!title || title.length > 100) {
+      res.status(400).json({ error: 'Selecciona una pestaña válida de Google Sheets.' });
+      return;
+    }
+    try {
+      const table = await sheetsService.readSpreadsheetTab(title);
+      res.json({ title, ...table });
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'No fue posible leer la pestaña.' });
+    }
+  });
+
+  adminRouter.post('/profile-photo', async (req, res) => {
+    const rawDataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : '';
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(rawDataUrl);
+    if (!match) {
+      res.status(400).json({ error: 'Selecciona una imagen JPG, PNG o WebP válida.' });
+      return;
+    }
+
+    const mimeType = match[1].toLowerCase();
+    const image = Buffer.from(match[2], 'base64');
+    if (!image.length || image.length > 5 * 1024 * 1024) {
+      res.status(413).json({ error: 'La foto debe pesar como máximo 5 MB.' });
+      return;
+    }
+
+    const isJpeg = mimeType === 'image/jpeg' && image.length >= 3 && image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff;
+    const isPng = mimeType === 'image/png' && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const isWebp = mimeType === 'image/webp' && image.length >= 12 && image.toString('ascii', 0, 4) === 'RIFF' && image.toString('ascii', 8, 12) === 'WEBP';
+    if (!isJpeg && !isPng && !isWebp) {
+      res.status(400).json({ error: 'El contenido del archivo no coincide con una imagen JPG, PNG o WebP.' });
+      return;
+    }
+
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/png' ? 'png' : 'webp';
+    const uploadsDir = path.join(config.dataDir, 'uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const filename = `profile-${crypto.randomUUID()}.${extension}`;
+    const photoUrl = `${config.appUrl.replace(/\/+$/, '')}/uploads/${filename}`;
+    const currentSettings = sheetsService.getSettings();
+
+    try {
+      fs.writeFileSync(path.join(uploadsDir, filename), image, { flag: 'wx', mode: 0o644 });
+      const { settings: savedSettings } = await sheetsService.updateSettings({
+        ...currentSettings,
+        authorizedPhotoUrl: photoUrl,
+      });
+      const sheetsWarning = await sheetsService.updateProfilePhotoUrlInInformationSheet(photoUrl);
+
+      let oldUploadPath = '';
+      try {
+        oldUploadPath = new URL(currentSettings.authorizedPhotoUrl, config.appUrl).pathname;
+      } catch {
+        oldUploadPath = '';
+      }
+      const oldFile = /^\/uploads\/profile-[0-9a-f-]+\.(?:jpg|png|webp)$/i.exec(oldUploadPath);
+      if (oldFile) {
+        const oldPath = path.join(uploadsDir, path.basename(oldUploadPath));
+        if (oldPath !== path.join(uploadsDir, filename) && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+
+      res.status(201).json({ settings: savedSettings, sheetsWarning });
+    } catch {
+      const savedPath = path.join(uploadsDir, filename);
+      if (fs.existsSync(savedPath)) fs.unlinkSync(savedPath);
+      res.status(500).json({ error: 'No se pudo guardar la fotografía de perfil.' });
     }
   });
 
@@ -157,14 +239,14 @@ async function bootstrap() {
     }
   });
 
-  adminRouter.put('/settings', (req, res) => {
+  adminRouter.put('/settings', async (req, res) => {
     const validation = validateSiteSettingsInput(req.body || {});
     if (!validation.ok || !validation.data) {
       res.status(400).json({ error: 'Configuración inválida.', fields: validation.errors });
       return;
     }
-    const saved = sheetsService.updateSettings(validation.data);
-    res.json({ settings: saved });
+    const { settings: saved, sheetsWarning } = await sheetsService.updateSettings(validation.data);
+    res.json({ settings: saved, sheetsWarning });
   });
 
   // AI Auditor routes
@@ -235,6 +317,10 @@ async function bootstrap() {
   });
 
   app.use('/api/admin', adminRouter);
+
+  const uploadsDir = path.join(config.dataDir, 'uploads');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  app.use('/uploads', express.static(uploadsDir, { immutable: true, maxAge: '1d' }));
 
   // Vite dev middleware or static production serving
   if (!config.isProd) {

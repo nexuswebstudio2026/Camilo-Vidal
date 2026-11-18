@@ -4,9 +4,7 @@ import { SocialLinksBar } from '../../components/SocialLinksBar';
 import { usePublicData } from '../../context/PublicDataContext';
 
 export function HomePage() {
-  const { settings, records, loading } = usePublicData();
-  const hasAuthorizedPhoto = Boolean(settings?.authorizedPhotoUrl?.trim());
-  const publicCount = records.length;
+  const { settings } = usePublicData();
 
   return (
     <div>
@@ -40,77 +38,28 @@ export function HomePage() {
               </Link>
             </div>
 
-            {settings && (
-              <div className="pt-4 border-t border-[var(--border-hairline)]">
-                <SocialLinksBar links={settings.socialLinks} />
-              </div>
-            )}
           </div>
-
-          {/* Neutral visual space when no authorized photo exists */}
           <div className="lg:col-span-5 flex">
-            {hasAuthorizedPhoto && settings?.authorizedPhotoUrl ? (
-              <figure className="w-full rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-elevated)] flex flex-col">
-                <img
-                  src={settings.authorizedPhotoUrl}
-                  alt="Fotografía oficial autorizada de Andrés Camilo Vidal Canchón"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-80 lg:h-full object-cover"
-                />
-                {settings.authorizedPhotoCaption && (
-                  <figcaption className="px-5 py-3 text-xs italic text-[var(--text-muted)] border-t border-[var(--border-hairline)]">
-                    {settings.authorizedPhotoCaption}
-                  </figcaption>
-                )}
-              </figure>
-            ) : (
-              <div
-                className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] p-8 flex flex-col justify-between min-h-[320px]"
-                aria-label="Ficha documental de Andrés Camilo Vidal Canchón"
-              >
-                <div className="flex items-center justify-between border-b border-[var(--border-hairline)] pb-4">
-                  <span className="font-mono-tabular text-xs uppercase tracking-widest text-[var(--text-muted)]">
-                    Archivo cívico
-                  </span>
-                  <span className="font-mono-tabular text-xs text-[var(--accent-gold)]">
-                    1994 — 2027
-                  </span>
-                </div>
-
-                <div className="py-8 flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="w-24 h-24 rounded-full border border-[var(--accent-gold)] bg-[var(--bg-surface)] flex items-center justify-center">
-                    <span className="font-editorial text-3xl font-semibold tracking-wider text-[var(--text-ink)]">
-                      ACV
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] max-w-xs leading-relaxed">
-                    {settings?.authorizedPhotoCaption ||
-                      'Espacio reservado exclusivamente para fotografía oficial autorizada por Andrés Camilo Vidal Canchón.'}
-                  </p>
-                </div>
-
-                <dl className="grid grid-cols-2 gap-4 pt-4 border-t border-[var(--border-hairline)] text-xs">
-                  <div>
-                    <dt className="text-[var(--text-muted)]">Formación actual</dt>
-                    <dd className="font-semibold text-[var(--text-ink)] mt-0.5">
-                      4.º semestre ESAP (en curso)
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[var(--text-muted)]">Hitos publicados</dt>
-                    <dd className="font-mono-tabular font-semibold text-[var(--text-ink)] mt-0.5">
-                      {loading ? '—' : `${publicCount} registros`}
-                    </dd>
-                  </div>
-                </dl>
+            <section className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] p-6 sm:p-8 flex flex-col justify-center space-y-5">
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
+                  Canales oficiales
+                </p>
+                <h2 className="font-editorial text-2xl sm:text-3xl font-semibold text-[var(--text-ink)]">
+                  Redes sociales
+                </h2>
+                <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+                  Sigue las novedades y comunícate con Andrés Camilo Vidal.
+                </p>
               </div>
-            )}
+              {settings && <SocialLinksBar links={settings.socialLinks} />}
+            </section>
           </div>
         </div>
       </section>
 
       {/* Brief Biography & Trajectory Invitation */}
-      <section className="border-t border-[var(--border-hairline)] bg-[var(--bg-surface)]">
+      <section className="border-t border-[var(--bg-elevated)] bg-[var(--bg-canvas)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 space-y-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             <div className="lg:col-span-4 space-y-2">
@@ -131,7 +80,7 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 border-t border-[var(--bg-elevated)] pt-8">
             <Link
               to="/vida-personal"
               className="group p-6 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] hover:border-[var(--accent-gold)] transition-colors flex flex-col justify-between space-y-4"

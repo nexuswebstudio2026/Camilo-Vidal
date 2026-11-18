@@ -1,4 +1,6 @@
 import type { PoliticalRecord } from '../../../shared/types';
+import { formatRecordChronology } from '../../../shared/records';
+import { PublicPortrait } from '../../components/PublicPortrait';
 import { usePublicData } from '../../context/PublicDataContext';
 
 function RecordRow({ item }: { item: PoliticalRecord }) {
@@ -6,10 +8,8 @@ function RecordRow({ item }: { item: PoliticalRecord }) {
     <li className="py-5 border-b border-[var(--border-hairline)] last:border-b-0 space-y-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
         <span className="font-mono-tabular font-medium text-[var(--accent-gold)]">
-          {item.period}
+          {formatRecordChronology(item)}
         </span>
-        <span aria-hidden="true">·</span>
-        <span>{item.category}</span>
         <span aria-hidden="true">·</span>
         <span>{item.status}</span>
       </div>
@@ -24,7 +24,7 @@ function RecordRow({ item }: { item: PoliticalRecord }) {
 }
 
 export function VidaPoliticaPage() {
-  const { records, loading, error } = usePublicData();
+  const { records, settings, loading, error } = usePublicData();
 
   const secRecords = records.filter(
     (r) => r.section === 'secretario_jac' || (r.section as string) === 'secretario'
@@ -40,16 +40,21 @@ export function VidaPoliticaPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 space-y-14">
-      <header className="space-y-4 border-b border-[var(--border-hairline)] pb-8">
-        <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
-          Vida política · Trayectoria comunitaria por etapas
-        </p>
-        <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
-          Del liderazgo comunal a la participación local
-        </h1>
-        <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
-          Recorrido documentado de Andrés Camilo Vidal Canchón en Juntas de Acción Comunal, su aspiración futura como edil de la Comuna 8 de Pasto y un espacio condicional preparado para una eventual gestión pública.
-        </p>
+      <header className="border-b border-[var(--border-hairline)] pb-8">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_15rem] gap-8 items-center">
+          <div className="space-y-4">
+            <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
+              Vida política · Trayectoria comunitaria por etapas
+            </p>
+            <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
+              Del liderazgo comunal a la participación local
+            </h1>
+            <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
+              Recorrido documentado de Andrés Camilo Vidal Canchón en Juntas de Acción Comunal, su aspiración futura como edil de la Comuna 8 de Pasto y un espacio condicional preparado para una eventual gestión pública.
+            </p>
+          </div>
+          <PublicPortrait src={settings?.authorizedPhotoUrl} />
+        </div>
       </header>
 
       {loading && (

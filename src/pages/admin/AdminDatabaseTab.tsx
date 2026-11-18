@@ -1,199 +1,187 @@
-import { RefreshCw, Search } from 'lucide-react';
-import { useState } from 'react';
-import type { PoliticalRecord, SheetsStatusInfo } from '../../../shared/types';
+import { Database, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface Props {
-  records: PoliticalRecord[];
-  sheetsStatus: SheetsStatusInfo | null;
-  onSyncFromSheets: () => Promise<void>;
+  authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
-export function AdminDatabaseTab({ records, sheetsStatus, onSyncFromSheets }: Props) {
-  const [query, setQuery] = useState('');
-  const [visibilityFilter, setVisibilityFilter] = useState<'todas' | 'publica' | 'privada'>('todas');
-  const [syncing, setSyncing] = useState(false);
+interface SheetTable {
+  title: string;
+  headers: string[];
+  rows: string[][];
+}
 
-  const filtered = records.filter((r) => {
-    if (visibilityFilter !== 'todas' && r.visibility !== visibilityFilter) return false;
-    if (!query.trim()) return true;
-    const q = query.toLowerCase();
-    return (
-      r.id.toLowerCase().includes(q) ||
-      r.title.toLowerCase().includes(q) ||
-      r.category.toLowerCase().includes(q) ||
-      r.section.toLowerCase().includes(q) ||
-      r.detail.toLowerCase().includes(q)
-    );
-  });
+async function readApiResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error('El servidor local aún no cargó las rutas nuevas. Reinicia el servidor y vuelve a actualizar la lectura.');
+  }
+}
 
-  const handleSync = async () => {
-    setSyncing(true);
+export function AdminDatabaseTab({ authFetch }: Props) {
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [selectedTab, setSelectedTab] = useState('');
+  const [table, setTable] = useState<SheetTable | null>(null);
+  const [loadingTabs, setLoadingTabs] = useState(true);
+  const [loadingTable, setLoadingTable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadTabs = useCallback(async (preferredTab?: string) => {
+    setLoadingTabs(true);
+    setError(null);
     try {
-      await onSyncFromSheets();
+      const response = await authFetch('/api/admin/sheets/tabs');
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'No fue posible consultar las hojas.');
+      const nextTabs = Array.isArray(data.tabs) ? data.tabs as string[] : [];
+      setTabs(nextTabs);
+      const nextSelected = preferredTab && nextTabs.includes(preferredTab)
+        ? preferredTab
+        : nextTabs[0] || '';
+      setSelectedTab(nextSelected);
+      if (!nextSelected) setTable(null);
+      return nextSelected;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No fue posible consultar las hojas.');
+      setTabs([]);
+      setTable(null);
+      return '';
     } finally {
-      setSyncing(false);
+      setLoadingTabs(false);
     }
+  }, [authFetch]);
+
+  const loadTable = useCallback(async (title: string) => {
+    if (!title) return;
+    setLoadingTable(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/api/admin/sheets/tab?name=${encodeURIComponent(title)}`);
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'No fue posible leer la pestaña.');
+      setTable({
+        title: String(data.title || title),
+        headers: Array.isArray(data.headers) ? data.headers.map(String) : [],
+        rows: Array.isArray(data.rows) ? data.rows as string[][] : [],
+      });
+    } catch (cause) {
+      setTable(null);
+      setError(cause instanceof Error ? cause.message : 'No fue posible leer la pestaña.');
+    } finally {
+      setLoadingTable(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void loadTabs();
+  }, [loadTabs]);
+
+  useEffect(() => {
+    if (selectedTab) void loadTable(selectedTab);
+  }, [selectedTab, loadTable]);
+
+  const refresh = async () => {
+    const tab = await loadTabs(selectedTab);
+    if (tab) await loadTable(tab);
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="font-editorial text-3xl sm:text-4xl font-semibold text-[var(--text-ink)]">
-            Base de datos y Google Sheets
+            Base de datos
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Registros estructurados que alimentan las páginas públicas cuando su visibilidad es pública.
+            Consulta las pestañas de Google Sheets y sus datos en modo de solo lectura.
           </p>
         </div>
-
         <button
           type="button"
-          onClick={handleSync}
-          disabled={syncing}
+          onClick={() => void refresh()}
+          disabled={loadingTabs || loadingTable}
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-ink)] hover:bg-[var(--bg-surface)] disabled:opacity-60 whitespace-nowrap cursor-pointer"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} aria-hidden="true" />
-          <span>{syncing ? 'Sincronizando...' : 'Actualizar lectura'}</span>
+          <RefreshCw className={`w-3.5 h-3.5 ${loadingTabs || loadingTable ? 'animate-spin' : ''}`} aria-hidden="true" />
+          Actualizar lectura
         </button>
       </header>
 
-      {/* Sheets connection & cache transparency */}
-      {sheetsStatus && (
-        <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] p-5 space-y-3 text-xs">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-[var(--text-muted)]">Estado de Google Sheets</p>
-              <p className="font-semibold text-[var(--text-ink)] mt-0.5">
-                {sheetsStatus.configured
-                  ? `Configurado (${sheetsStatus.spreadsheetIdMasked} · Hoja "${sheetsStatus.sheetName}")`
-                  : 'Pendiente de credenciales de cuenta de servicio'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[var(--text-muted)]">Última sincronización local</p>
-              <p className="font-mono-tabular text-[var(--text-ink)] mt-0.5">
-                {sheetsStatus.lastSyncAt
-                  ? new Date(sheetsStatus.lastSyncAt).toLocaleString('es-CO')
-                  : 'Sin registro'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[var(--text-muted)]">Encabezados requeridos (9 columnas)</p>
-              <p className="font-mono-tabular text-[var(--accent-gold)] mt-0.5 break-all">
-                {sheetsStatus.headers.join(', ')}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-[var(--text-muted)] border-t border-[var(--border-hairline)] pt-3 leading-relaxed">
-            <strong className="text-[var(--text-ink)]">Comportamiento real de caché:</strong>{' '}
-            {sheetsStatus.cacheBehavior}
-          </p>
-
-          {sheetsStatus.lastError && (
-            <p role="alert" className="text-[var(--status-error)] font-medium">
-              Última incidencia reportada por Google Sheets: {sheetsStatus.lastError}
-            </p>
-          )}
+      {error && (
+        <div role="alert" className="rounded-xl border border-[var(--status-error)] bg-[var(--bg-elevated)] p-4 text-sm text-[var(--status-error)]">
+          {error}
         </div>
       )}
 
-      {/* Search and filter controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search
-            className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2"
-            aria-hidden="true"
-          />
-          <label htmlFor="db-search" className="sr-only">
-            Buscar en base de datos
-          </label>
-          <input
-            id="db-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filtrar por id, título, categoría o detalle..."
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-ink)]"
-          />
-        </div>
+      <section aria-label="Pestañas de Google Sheets" className="space-y-3">
+        <h2 className="text-sm font-semibold text-[var(--text-ink)]">Hojas disponibles</h2>
+        {loadingTabs && <p className="text-sm text-[var(--text-muted)]">Consultando pestañas…</p>}
+        {!loadingTabs && tabs.length > 0 && (
+          <div role="tablist" aria-label="Hojas del archivo" className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={selectedTab === tab}
+                onClick={() => setSelectedTab(tab)}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors cursor-pointer ${selectedTab === tab
+                  ? 'border-[var(--accent-gold)] bg-[var(--bg-elevated)] text-[var(--text-ink)]'
+                  : 'border-[var(--border-hairline)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-ink)]'}`}
+              >
+                <Database className="h-3.5 w-3.5" aria-hidden="true" />
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
+        {!loadingTabs && tabs.length === 0 && !error && (
+          <p className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] p-5 text-sm text-[var(--text-muted)]">
+            No se encontraron pestañas en el archivo de Google Sheets.
+          </p>
+        )}
+      </section>
 
-        <div
-          role="group"
-          aria-label="Filtrar por visibilidad"
-          className="flex items-center gap-1 p-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
-        >
-          {(['todas', 'publica', 'privada'] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setVisibilityFilter(opt)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize cursor-pointer ${
-                visibilityFilter === opt
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-ink)]'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-ink)]'
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Data table */}
-      <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] overflow-x-auto">
-        <table className="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] font-mono-tabular text-[var(--text-muted)]">
-              <th className="py-3 px-3">id</th>
-              <th className="py-3 px-3">section</th>
-              <th className="py-3 px-3">category</th>
-              <th className="py-3 px-3">title</th>
-              <th className="py-3 px-3">period</th>
-              <th className="py-3 px-3">status</th>
-              <th className="py-3 px-3">visibility</th>
-              <th className="py-3 px-3 text-right">sort_order</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border-hairline)]">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="py-8 px-4 text-center text-[var(--text-muted)]">
-                  No se encontraron registros con el filtro aplicado.
-                </td>
-              </tr>
+      {selectedTab && (
+        <section aria-label={`Contenido de ${selectedTab}`} className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-editorial text-2xl font-semibold text-[var(--text-ink)]">{selectedTab}</h2>
+            {!loadingTable && table && <span className="text-xs text-[var(--text-muted)]">{table.rows.length} filas</span>}
+          </div>
+          <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] overflow-auto max-h-[65vh]">
+            {loadingTable ? (
+              <p className="p-6 text-sm text-[var(--text-muted)]">Cargando datos…</p>
+            ) : table && table.headers.length > 0 ? (
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 z-10">
+                  <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] font-mono-tabular text-[var(--text-muted)]">
+                    {table.headers.map((header, index) => (
+                      <th key={`${header}-${index}`} scope="col" className="py-3 px-3 whitespace-nowrap">{header || `Columna ${index + 1}`}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-hairline)]">
+                  {table.rows.length === 0 ? (
+                    <tr><td colSpan={table.headers.length} className="py-8 px-4 text-center text-[var(--text-muted)]">Esta hoja no tiene filas con datos.</td></tr>
+                  ) : table.rows.map((row, rowIndex) => (
+                    <tr key={rowIndex} className="hover:bg-[var(--bg-surface)]/60">
+                      {table.headers.map((_, columnIndex) => (
+                        <td key={columnIndex} className="py-3 px-3 min-w-24 max-w-sm whitespace-pre-wrap break-words text-[var(--text-ink)]">
+                          {row[columnIndex] || <span className="text-[var(--text-muted)]">—</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              filtered.map((row) => (
-                <tr key={row.id} className="hover:bg-[var(--bg-surface)]/60">
-                  <td className="py-3 px-3 font-mono-tabular text-[var(--text-muted)] whitespace-nowrap">
-                    {row.id}
-                  </td>
-                  <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">{row.section}</td>
-                  <td className="py-3 px-3 whitespace-nowrap">{row.category}</td>
-                  <td className="py-3 px-3 font-medium text-[var(--text-ink)] min-w-[200px]">
-                    {row.title}
-                  </td>
-                  <td className="py-3 px-3 whitespace-nowrap">{row.period}</td>
-                  <td className="py-3 px-3 whitespace-nowrap">{row.status}</td>
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    <span
-                      className={
-                        row.visibility === 'publica'
-                          ? 'text-[var(--status-success)] font-semibold'
-                          : 'text-[var(--status-warning)] font-semibold'
-                      }
-                    >
-                      {row.visibility}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 font-mono-tabular text-right">{row.sort_order}</td>
-                </tr>
-              ))
+              <p className="p-6 text-sm text-[var(--text-muted)]">La hoja seleccionada está vacía.</p>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
   validateSheetHeaders,
 } from './sheets-mapper';
 
-test('validateSheetHeaders verifies all 9 required headers', () => {
+test('validateSheetHeaders verifies the political timeline headers', () => {
   assert.equal(validateSheetHeaders([...SHEET_HEADERS]).valid, true);
   const missing = validateSheetHeaders(['id', 'title']);
   assert.equal(missing.valid, false);
@@ -19,9 +19,9 @@ test('rowArrayToRecord and recordToRowArray round-trip cleanly', () => {
   const sample = {
     id: 'rec-01',
     section: 'actividad_jac' as const,
-    category: 'Actividad comunitaria JAC',
     title: 'Jornada de siembra',
-    period: 'Periodo JAC',
+    chronology_start: '2024',
+    chronology_end: '2025',
     detail: 'Siembra vecinal de árboles en el sector.',
     status: 'Confirmado',
     visibility: 'publica' as const,
@@ -37,9 +37,9 @@ test('filterPublicRecords excludes private records and sorts by sort_order', () 
     {
       id: '2',
       section: 'actividad_jac',
-      category: 'Actividad comunitaria JAC',
       title: 'Segundo público',
-      period: '2024',
+      chronology_start: '2024',
+      chronology_end: '',
       detail: 'Detalle público dos.',
       status: 'Confirmado',
       visibility: 'publica',
@@ -48,9 +48,9 @@ test('filterPublicRecords excludes private records and sorts by sort_order', () 
     {
       id: 'priv',
       section: 'actividad_jac',
-      category: 'Actividad comunitaria JAC',
       title: 'Borrador privado',
-      period: '2025',
+      chronology_start: '2025',
+      chronology_end: '',
       detail: 'No debe aparecer en público.',
       status: 'Pendiente de confirmación',
       visibility: 'privada',
@@ -59,9 +59,9 @@ test('filterPublicRecords excludes private records and sorts by sort_order', () 
     {
       id: '1',
       section: 'secretario_jac',
-      category: 'Secretaría JAC',
       title: 'Primero público',
-      period: '2018',
+      chronology_start: '2018',
+      chronology_end: '',
       detail: 'Detalle público uno.',
       status: 'Confirmado',
       visibility: 'publica',

@@ -13,9 +13,9 @@ export type RecordSection =
 export interface PoliticalRecord {
   id: string;
   section: RecordSection;
-  category: string;
   title: string;
-  period: string;
+  chronology_start: string;
+  chronology_end: string;
   detail: string;
   status: string;
   visibility: RecordVisibility;
@@ -24,7 +24,7 @@ export interface PoliticalRecord {
 
 export interface SocialLinkItem {
   id: string;
-  network: 'Facebook' | 'Instagram' | 'X' | 'TikTok' | 'Threads' | string;
+  network: 'Facebook' | 'Instagram' | 'X' | 'TikTok' | 'Threads' | 'YouTube' | 'WhatsApp' | string;
   label: string;
   url: string;
   enabled: boolean;

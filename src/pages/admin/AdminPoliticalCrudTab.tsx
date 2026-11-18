@@ -1,18 +1,8 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import type { PoliticalRecord, RecordVisibility } from '../../../shared/types';
+import { formatRecordChronology } from '../../../shared/records';
 import { useAuth } from '../../context/AuthContext';
-
-const CATEGORY_OPTIONS = [
-  'Secretaría JAC',
-  'Presidencia JAC',
-  'Actividad comunitaria JAC',
-  'Aspiración a edil',
-  'Proyección futura como edil',
-  'Proyecto JAC',
-  'Proyecto Nexus Web Studio',
-  'Proyecto campaña edil',
-];
 
 const STATUS_OPTIONS = [
   'Confirmado',
@@ -24,9 +14,9 @@ const STATUS_OPTIONS = [
 ];
 
 interface FormState {
-  category: string;
   title: string;
-  period: string;
+  chronology_start: string;
+  chronology_end: string;
   status: string;
   detail: string;
   visibility: RecordVisibility;
@@ -34,13 +24,13 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
-  category: 'Actividad comunitaria JAC',
   title: '',
-  period: '',
+  chronology_start: '',
+  chronology_end: '',
   status: 'Confirmado',
   detail: '',
   visibility: 'publica',
-  sort_order: '100',
+  sort_order: '',
 };
 
 interface Props {
@@ -51,23 +41,24 @@ interface Props {
 export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
   const { authFetch } = useAuth();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSection, setEditingSection] = useState<PoliticalRecord['section'] | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmDeleteRecord, setConfirmDeleteRecord] = useState<PoliticalRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const nextSortOrder = records.reduce((max, record) => Math.max(max, record.sort_order), 0) + 10;
 
   const validateClient = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!form.category.trim()) errs.category = 'Selecciona una categoría.';
     if (form.title.trim().length < 3) errs.title = 'El título debe tener al menos 3 caracteres.';
-    if (!form.period.trim()) errs.period = 'Indica la cronología o periodo.';
+    if (!form.chronology_start.trim()) errs.chronology_start = 'Indica la cronología de inicio.';
     if (!form.status.trim()) errs.status = 'Selecciona el estado.';
     if (form.detail.trim().length < 10) {
       errs.detail = 'Los detalles deben tener al menos 10 caracteres.';
     }
-    const orderNum = Number(form.sort_order);
+    const orderNum = form.sort_order.trim() ? Number(form.sort_order) : nextSortOrder;
     if (!Number.isFinite(orderNum) || orderNum < 0 || orderNum > 9999) {
       errs.sort_order = 'Ingresa un número entre 0 y 9999.';
     }
@@ -77,10 +68,11 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
 
   const handleStartEdit = (rec: PoliticalRecord) => {
     setEditingId(rec.id);
+    setEditingSection(rec.section);
     setForm({
-      category: rec.category,
       title: rec.title,
-      period: rec.period,
+      chronology_start: rec.chronology_start,
+      chronology_end: rec.chronology_end,
       status: rec.status,
       detail: rec.detail,
       visibility: rec.visibility,
@@ -92,6 +84,7 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
 
   const handleCancelEdit = () => {
     setEditingId(null);
+    setEditingSection(null);
     setForm(EMPTY_FORM);
     setFieldErrors({});
   };
@@ -104,13 +97,14 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
     setSubmitting(true);
     try {
       const payload = {
-        category: form.category,
+        ...(editingSection ? { section: editingSection } : {}),
         title: form.title,
-        period: form.period,
+        chronology_start: form.chronology_start,
+        chronology_end: form.chronology_end,
         status: form.status,
         detail: form.detail,
         visibility: form.visibility,
-        sort_order: Number(form.sort_order),
+        sort_order: form.sort_order.trim() ? Number(form.sort_order) : nextSortOrder,
       };
 
       const url = editingId ? `/api/admin/records/${editingId}` : '/api/admin/records';
@@ -138,6 +132,7 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
             : 'Nuevo registro creado y publicado según su visibilidad.',
       });
       setEditingId(null);
+      setEditingSection(null);
       setForm(EMPTY_FORM);
       setFieldErrors({});
     } catch {
@@ -223,27 +218,6 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label htmlFor="rec-category" className="block text-xs font-semibold text-[var(--text-ink)]">
-              Categoría
-            </label>
-            <select
-              id="rec-category"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
-            >
-              {CATEGORY_OPTIONS.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-            {fieldErrors.category && (
-              <p className="text-xs text-[var(--status-error)]">{fieldErrors.category}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
             <label htmlFor="rec-title" className="block text-xs font-semibold text-[var(--text-ink)]">
               Título
             </label>
@@ -261,19 +235,36 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="rec-period" className="block text-xs font-semibold text-[var(--text-ink)]">
-              Cronología o periodo
+            <label htmlFor="rec-chronology-start" className="block text-xs font-semibold text-[var(--text-ink)]">
+              Cronología de inicio
             </label>
             <input
-              id="rec-period"
+              id="rec-chronology-start"
               type="text"
-              value={form.period}
-              onChange={(e) => setForm({ ...form, period: e.target.value })}
-              placeholder="Ej. Abril de 2022 o Pendiente de confirmar"
+              value={form.chronology_start}
+              onChange={(e) => setForm({ ...form, chronology_start: e.target.value })}
+              placeholder="Ej. Abril de 2022"
               className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
             />
-            {fieldErrors.period && (
-              <p className="text-xs text-[var(--status-error)]">{fieldErrors.period}</p>
+            {fieldErrors.chronology_start && (
+              <p className="text-xs text-[var(--status-error)]">{fieldErrors.chronology_start}</p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="rec-chronology-end" className="block text-xs font-semibold text-[var(--text-ink)]">
+              Cronología final
+            </label>
+            <input
+              id="rec-chronology-end"
+              type="text"
+              value={form.chronology_end}
+              onChange={(e) => setForm({ ...form, chronology_end: e.target.value })}
+              placeholder="Opcional, por ejemplo: 2026"
+              className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
+            />
+            {fieldErrors.chronology_end && (
+              <p className="text-xs text-[var(--status-error)]">{fieldErrors.chronology_end}</p>
             )}
           </div>
 
@@ -302,6 +293,7 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
             <label htmlFor="rec-visibility" className="block text-xs font-semibold text-[var(--text-ink)]">
               Visibilidad
             </label>
+            <p className="text-xs text-[var(--text-muted)]">Pública aparece en el sitio; privada queda solo en el panel.</p>
             <select
               id="rec-visibility"
               value={form.visibility}
@@ -327,10 +319,11 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
               type="number"
               min={0}
               max={9999}
-              value={form.sort_order}
+              value={form.sort_order || String(nextSortOrder)}
               onChange={(e) => setForm({ ...form, sort_order: e.target.value })}
               className="w-full px-3 py-2 text-sm font-mono-tabular rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
             />
+            <p className="text-xs text-[var(--text-muted)]">Se propone el siguiente orden disponible; puedes ajustarlo.</p>
             {fieldErrors.sort_order && (
               <p className="text-xs text-[var(--status-error)]">{fieldErrors.sort_order}</p>
             )}
@@ -392,12 +385,12 @@ export function AdminPoliticalCrudTab({ records, onRefreshAll }: Props) {
                 <div className="space-y-1.5 flex-1">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
                     <span className="font-mono-tabular font-semibold text-[var(--accent-gold)]">
-                      #{rec.sort_order}
+                      #{rec.id}
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span>{rec.category}</span>
+                    <span className="font-mono-tabular">{formatRecordChronology(rec)}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-mono-tabular">{rec.period}</span>
+                    <span>Orden {rec.sort_order}</span>
                     <span aria-hidden="true">·</span>
                     <span>{rec.status}</span>
                     <span aria-hidden="true">·</span>

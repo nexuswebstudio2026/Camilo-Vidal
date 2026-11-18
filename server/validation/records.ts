@@ -1,16 +1,5 @@
 import type { PoliticalRecord, RecordSection, RecordVisibility, SiteSettings } from '../../shared/types';
 
-export const RECORD_CATEGORIES = [
-  'Secretaría JAC',
-  'Presidencia JAC',
-  'Actividad comunitaria JAC',
-  'Aspiración a edil',
-  'Proyección futura como edil',
-  'Proyecto JAC',
-  'Proyecto Nexus Web Studio',
-  'Proyecto campaña edil',
-] as const;
-
 export const ALLOWED_STATUSES = [
   'Confirmado',
   'En curso',
@@ -26,16 +15,15 @@ export interface ValidationResult<T> {
   errors?: Record<string, string>;
 }
 
-export function inferSectionFromCategory(category: string): RecordSection {
-  const norm = category.trim().toLowerCase();
+export function inferSectionFromText(text: string): RecordSection {
+  const norm = text.trim().toLowerCase();
   if (norm.includes('secretar')) return 'secretario_jac';
-  if (norm.includes('presiden')) return 'presidente_jac';
-  if (norm.includes('actividad')) return 'actividad_jac';
-  if (norm.includes('aspiraci') && !norm.includes('proyecto')) return 'aspiracion_edil';
-  if (norm.includes('proyecci') || norm.includes('condicional')) return 'proyeccion_edil';
+  if (norm.includes('presiden') || norm.includes('junta')) return 'presidente_jac';
   if (norm.includes('nexus')) return 'proyecto_nexus';
-  if (norm.includes('campa') || norm.includes('proyecto edil')) return 'proyecto_edil';
   if (norm.includes('proyecto jac')) return 'proyecto_jac';
+  if (norm.includes('campaña') || norm.includes('campana') || norm.includes('proyecto edil')) return 'proyecto_edil';
+  if (norm.includes('proyecci') || norm.includes('condicional')) return 'proyeccion_edil';
+  if (norm.includes('aspiraci') || norm.includes('edil')) return 'aspiracion_edil';
   return 'actividad_jac';
 }
 
@@ -54,23 +42,21 @@ export function validatePoliticalRecordInput(
 ): ValidationResult<Omit<PoliticalRecord, 'id'>> {
   const errors: Record<string, string> = {};
 
-  // Explicitly disallow any "etapa" / "stage" field from overriding schema rules
-  const category = sanitizeText(raw.category, 80);
+  // Section remains an internal grouping field; users classify entries through the title.
+  const textForSection = sanitizeText(`${String(raw.title || '')} ${String(raw.detail || '')}`, 2700);
   const title = sanitizeText(raw.title, 180);
-  const period = sanitizeText(raw.period, 120);
+  const chronologyStart = sanitizeText(raw.chronology_start, 120);
+  const chronologyEnd = sanitizeText(raw.chronology_end, 120);
   const status = sanitizeText(raw.status, 80);
   const detail = sanitizeText(raw.detail, 2500);
   const rawVisibility = typeof raw.visibility === 'string' ? raw.visibility.trim().toLowerCase() : '';
   const visibility: RecordVisibility = rawVisibility === 'privada' ? 'privada' : 'publica';
 
-  if (!category) {
-    errors.category = 'La categoría es obligatoria.';
-  }
   if (!title || title.length < 3) {
     errors.title = 'El título debe tener al menos 3 caracteres.';
   }
-  if (!period) {
-    errors.period = 'La cronología o periodo es obligatorio (puedes indicar "Pendiente de confirmar").';
+  if (!chronologyStart) {
+    errors.chronology_start = 'Indica la cronología de inicio (puedes escribir "Pendiente de confirmar").';
   }
   if (!status) {
     errors.status = 'El estado es obligatorio.';
@@ -105,15 +91,15 @@ export function validatePoliticalRecordInput(
   const section =
     typeof raw.section === 'string' && allowedSections.includes(raw.section as RecordSection)
       ? (raw.section as RecordSection)
-      : inferSectionFromCategory(category);
+    : inferSectionFromText(textForSection);
 
   return {
     ok: true,
     data: {
       section,
-      category,
       title,
-      period,
+      chronology_start: chronologyStart,
+      chronology_end: chronologyEnd,
       detail,
       status,
       visibility,
@@ -130,6 +116,10 @@ export function isValidHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isValidLocalProfilePhotoPath(url: string): boolean {
+  return /^\/(?:profile-photo\.png|uploads\/profile-[0-9a-f-]+\.(?:jpg|png|webp))$/i.test(url);
 }
 
 export function validateSiteSettingsInput(raw: Record<string, unknown>): ValidationResult<SiteSettings> {
@@ -161,8 +151,8 @@ export function validateSiteSettingsInput(raw: Record<string, unknown>): Validat
   });
 
   const authorizedPhotoUrl = sanitizeText(raw.authorizedPhotoUrl, 400);
-  if (authorizedPhotoUrl && !isValidHttpUrl(authorizedPhotoUrl)) {
-    errors.authorizedPhotoUrl = 'La URL de fotografía autorizada debe usar http:// o https://.';
+  if (authorizedPhotoUrl && !isValidHttpUrl(authorizedPhotoUrl) && !isValidLocalProfilePhotoPath(authorizedPhotoUrl)) {
+    errors.authorizedPhotoUrl = 'La URL de fotografía autorizada debe usar http://, https:// o una ruta local de foto del sitio.';
   }
 
   if (Object.keys(errors).length > 0) {

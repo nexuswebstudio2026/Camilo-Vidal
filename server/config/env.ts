@@ -16,6 +16,8 @@ export interface ServerConfig {
   googleSheets: {
     spreadsheetId: string | null;
     sheetName: string;
+    informationSheetName: string;
+    socialLinksSheetName: string;
     serviceAccountEmail: string | null;
     privateKey: string | null;
   };
@@ -43,6 +45,7 @@ function resolveSessionSecret(dataDir: string): { secret: string; fromEnv: boole
 
 export function loadServerConfig(): ServerConfig {
   const dataDir = path.resolve(process.cwd(), 'data');
+  const port = Number(process.env.PORT) || 3000;
   const session = resolveSessionSecret(dataDir);
 
   let serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim() || null;
@@ -65,10 +68,10 @@ export function loadServerConfig(): ServerConfig {
   }
 
   return {
-    port: Number(process.env.PORT) || 3000,
+    port,
     nodeEnv: process.env.NODE_ENV || 'development',
     isProd: process.env.NODE_ENV === 'production',
-    appUrl: process.env.APP_URL?.trim() || 'http://localhost:3000',
+    appUrl: process.env.APP_URL?.trim() || `http://localhost:${port}`,
     sessionSecret: session.secret,
     sessionSecretFromEnv: session.fromEnv,
     adminUsername: process.env.ADMIN_USERNAME?.trim() || null,
@@ -78,6 +81,8 @@ export function loadServerConfig(): ServerConfig {
     googleSheets: {
       spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim() || null,
       sheetName: process.env.GOOGLE_SHEETS_SHEET_NAME?.trim() || 'Registros',
+      informationSheetName: process.env.GOOGLE_SHEETS_INFORMATION_SHEET_NAME?.trim() || 'Información',
+      socialLinksSheetName: process.env.GOOGLE_SHEETS_SOCIAL_LINKS_SHEET_NAME?.trim() || 'Redes sociales',
       serviceAccountEmail,
       privateKey: privateKey ? privateKey.replace(/\\n/g, '\n') : null,
     },

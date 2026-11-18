@@ -9,14 +9,45 @@ interface Props {
   onSettingsSaved: (next: SiteSettings) => Promise<void>;
 }
 
+const DEFAULT_SOCIAL_LINKS = [
+  'Facebook',
+  'Instagram',
+  'X',
+  'TikTok',
+  'Threads',
+  'YouTube',
+  'WhatsApp',
+].map((network) => ({
+  id: `social-${network.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+  network,
+  label: 'Perfil oficial',
+  url: '',
+  enabled: false,
+}));
+
+function withDefaultSocialLinks(links: SiteSettings['socialLinks']): SiteSettings['socialLinks'] {
+  const defaults = DEFAULT_SOCIAL_LINKS.map((item) => {
+    const saved = links.find((link) => link.network.toLowerCase() === item.network.toLowerCase());
+    return saved ? { ...item, ...saved, enabled: Boolean(saved.url.trim()) } : item;
+  });
+  const custom = links.filter(
+    (link) => !link.network.toLowerCase().includes('messenger') &&
+      !DEFAULT_SOCIAL_LINKS.some((item) => item.network.toLowerCase() === link.network.toLowerCase())
+  ).map((link) => ({ ...link, enabled: Boolean(link.url.trim()) }));
+  return [...defaults, ...custom];
+}
+
 export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSaved }: Props) {
   const { authFetch } = useAuth();
-  const [form, setForm] = useState<SiteSettings>(settings);
+  const [form, setForm] = useState<SiteSettings>(() => ({
+    ...settings,
+    socialLinks: withDefaultSocialLinks(settings.socialLinks),
+  }));
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    setForm(settings);
+    setForm({ ...settings, socialLinks: withDefaultSocialLinks(settings.socialLinks) });
   }, [settings]);
 
   const publicCount = records.filter((r) => r.visibility === 'publica').length;
@@ -43,8 +74,10 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
       }
       await onSettingsSaved(data.settings as SiteSettings);
       setFeedback({
-        type: 'success',
-        text: 'Configuración de redes sociales, proyectos y nota biográfica guardada correctamente.',
+        type: data.sheetsWarning ? 'error' : 'success',
+        text: data.sheetsWarning
+          ? `La configuración quedó guardada localmente, pero Google Sheets no se actualizó: ${String(data.sheetsWarning)}`
+          : 'Configuración guardada y redes sincronizadas con Google Sheets.',
       });
     } catch {
       setFeedback({ type: 'error', text: 'Error de red al guardar la configuración.' });
@@ -181,24 +214,10 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
                 key={link.id}
                 className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center p-3 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-canvas)]"
               >
-                <div className="md:col-span-3 flex items-center gap-2.5">
-                  <input
-                    id={`social-enabled-${link.id}`}
-                    type="checkbox"
-                    checked={link.enabled}
-                    onChange={(e) => {
-                      const next = form.socialLinks.slice();
-                      next[idx] = { ...link, enabled: e.target.checked };
-                      setForm({ ...form, socialLinks: next });
-                    }}
-                    className="w-4 h-4 accent-[var(--brand-green)]"
-                  />
-                  <label
-                    htmlFor={`social-enabled-${link.id}`}
-                    className="text-xs font-semibold text-[var(--text-ink)]"
-                  >
+                <div className="md:col-span-3 flex items-center">
+                  <span className="text-xs font-semibold text-[var(--text-ink)]">
                     {link.network}
-                  </label>
+                  </span>
                 </div>
                 <div className="md:col-span-9">
                   <label htmlFor={`social-url-${link.id}`} className="sr-only">
@@ -210,10 +229,10 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
                     value={link.url}
                     onChange={(e) => {
                       const next = form.socialLinks.slice();
-                      next[idx] = { ...link, url: e.target.value };
+                      next[idx] = { ...link, url: e.target.value, enabled: Boolean(e.target.value.trim()) };
                       setForm({ ...form, socialLinks: next });
                     }}
-                    placeholder="https://..."
+                    placeholder={link.network === 'WhatsApp' ? 'https://wa.me/573...' : 'https://...'}
                     className="w-full px-3 py-1.5 text-xs font-mono-tabular rounded border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-ink)]"
                   />
                 </div>
@@ -233,10 +252,10 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
               </label>
               <input
                 id="auth-photo-url"
-                type="url"
+                type="text"
                 value={form.authorizedPhotoUrl}
                 onChange={(e) => setForm({ ...form, authorizedPhotoUrl: e.target.value })}
-                placeholder="Vacío = marco documental neutro"
+                placeholder="https://… o /profile-photo.png"
                 className="w-full px-3 py-2 text-xs rounded border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
               />
             </div>

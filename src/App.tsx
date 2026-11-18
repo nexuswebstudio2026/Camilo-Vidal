@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { PublicLayout } from './components/PublicLayout';
+import { ProfileFavicon } from './components/ProfileFavicon';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PublicDataProvider } from './context/PublicDataContext';
 import { useAutoTheme } from './lib/theme';
@@ -131,6 +132,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <PublicDataProvider>
+          <ProfileFavicon />
           <AppRoutes />
         </PublicDataProvider>
       </AuthProvider>

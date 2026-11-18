@@ -10,7 +10,8 @@ Aplicación web full-stack en español (`lang="es"`) con sitio público editoria
   - Panel privado: `/dashboard` con barra lateral colapsable pulsando el avatar `ACV` y módulos `Inicio / Panel`, `Vida política` (CRUD), `Base de datos`, `Agentes de IA` y `Sitio público`.
 - **Backend (`server.ts` + `server/`)**: Express + TypeScript organizado por servicios (`auth`, `sheets`, `ai`, `validation`, `config`).
   - Autenticación con hash `scrypt` + token HMAC-SHA256 en cookie `HttpOnly`, `SameSite=Lax`, más verificación de origen (`Origin`) contra CSRF.
-  - Almacenamiento persistente local (`data/store.json`) y sincronización opcional con Google Sheets API v4 mediante JWT RSA-SHA256 de cuenta de servicio.
+  - Almacenamiento persistente local (`data/store.json`) y fotos subidas en `data/uploads/` (JPG, PNG o WebP, máximo 5 MB).
+  - Sincronización opcional con Google Sheets API v4 mediante JWT RSA-SHA256 de cuenta de servicio. La pestaña de información usa `GOOGLE_SHEETS_INFORMATION_SHEET_NAME` (por defecto `Información`) y guarda la URL pública de la foto en `B2` cuando las credenciales están configuradas.
 
 ## Estructura de Google Sheets requerida
 
@@ -32,6 +33,7 @@ Configura estas variables en `.env` (local, ignorado por Git) o en **Settings �
 - `GEMINI_API_KEY`: Clave del servidor para el agente **Auditor Full Stack del sitio Camilo Vidal**.
 - `GOOGLE_SHEETS_SPREADSHEET_ID`: ID de la hoja de cálculo.
 - `GOOGLE_SHEETS_SHEET_NAME`: Nombre de la pestaña (por defecto `Registros`).
+- `GOOGLE_SHEETS_INFORMATION_SHEET_NAME`: Pestaña donde se guarda la URL de la foto (por defecto `Información`).
 - `GOOGLE_SERVICE_ACCOUNT_JSON`: Contenido JSON completo de la cuenta de servicio (opcional si usas email + llave privada).
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`: Correo `client_email` de la cuenta de servicio.
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`: Clave privada PEM de la cuenta de servicio (con `\n` escapados).

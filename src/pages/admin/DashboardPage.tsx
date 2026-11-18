@@ -1,5 +1,5 @@
-import { Bot, Database, Globe, Landmark, LayoutDashboard, LogOut } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Bot, Camera, Database, Globe, Landmark, LayoutDashboard, LogOut } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import type { PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../../shared/types';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +9,7 @@ import { AdminDatabaseTab } from './AdminDatabaseTab';
 import { AdminOverviewTab } from './AdminOverviewTab';
 import { AdminPoliticalCrudTab } from './AdminPoliticalCrudTab';
 import { AdminPublicSiteTab } from './AdminPublicSiteTab';
+import { SiteFooter } from '../../components/SiteFooter';
 
 type AdminModule = 'inicio' | 'vida_politica' | 'base_datos' | 'agentes_ia' | 'sitio_publico';
 
@@ -26,6 +27,9 @@ export function DashboardPage() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoUploadMessage, setPhotoUploadMessage] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const loadAdminData = useCallback(async (forceSync = false) => {
     setDataError(null);
@@ -65,6 +69,52 @@ export function DashboardPage() {
     await refreshPublicData();
   };
 
+  const handleProfilePhotoSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+
+    const acceptedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!acceptedTypes.includes(file.type)) {
+      setPhotoUploadMessage('Usa una imagen JPG, PNG o WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoUploadMessage('La foto debe pesar máximo 5 MB.');
+      return;
+    }
+
+    setPhotoUploading(true);
+    setPhotoUploadMessage(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
+        reader.readAsDataURL(file);
+      });
+      const response = await authFetch('/api/admin/profile-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la foto.');
+
+      setSettings(data.settings as SiteSettings);
+      await refreshPublicData();
+      setPhotoUploadMessage(
+        data.sheetsWarning
+          ? `Foto guardada en el sitio. ${data.sheetsWarning}`
+          : 'Foto actualizada en el panel y en el sitio público.'
+      );
+    } catch (error) {
+      setPhotoUploadMessage(error instanceof Error ? error.message : 'Error al cargar la foto.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
@@ -91,40 +141,77 @@ export function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen flex bg-[var(--bg-canvas)] text-[var(--text-ink)]">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-ink)]">
+      <div className="flex">
       {/* Left Sidebar: toggles exclusively via Camilo's initials avatar (no independent arrow button) */}
       <aside
         aria-label="Navegación del panel privado"
-        className={`shrink-0 border-r border-[var(--border-hairline)] bg-[var(--bg-surface)] flex flex-col justify-between transition-[width] duration-200 ${
+        className={`shrink-0 self-start h-fit border-r border-[var(--border-hairline)] bg-[var(--bg-surface)] flex flex-col transition-[width] duration-200 ${
           sidebarOpen ? 'w-64' : 'w-20'
         }`}
       >
         <div className="p-4 space-y-6">
           {/* Avatar button with Camilo's initials — ONLY toggle control for sidebar */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen((open) => !open)}
-              aria-expanded={sidebarOpen}
-              aria-label={
-                sidebarOpen
-                  ? 'Contraer barra lateral del panel'
-                  : 'Expandir barra lateral del panel'
-              }
-              title="Pulsa el avatar para abrir o cerrar la barra lateral"
-              className="w-11 h-11 rounded-full bg-[var(--brand-green)] text-white dark:text-[#0b140f] font-editorial text-base font-semibold tracking-wider flex items-center justify-center shrink-0 border border-[var(--accent-gold)] hover:bg-[var(--brand-green-hover)] transition-colors cursor-pointer"
-            >
-              ACV
-            </button>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((open) => !open)}
+                aria-expanded={sidebarOpen}
+                aria-label={
+                  sidebarOpen
+                    ? 'Contraer barra lateral del panel'
+                    : 'Expandir barra lateral del panel'
+                }
+                title="Pulsa el avatar para abrir o cerrar la barra lateral"
+                className="w-11 h-11 rounded-full overflow-hidden bg-[var(--brand-green)] text-white dark:text-[#0b140f] font-editorial text-base font-semibold tracking-wider flex items-center justify-center shrink-0 border border-[var(--accent-gold)] hover:bg-[var(--brand-green-hover)] transition-colors cursor-pointer"
+              >
+                {settings?.authorizedPhotoUrl ? (
+                  <img src={settings.authorizedPhotoUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  'ACV'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                aria-label={settings?.authorizedPhotoUrl ? 'Cambiar foto de perfil' : 'Cargar foto de perfil'}
+                title={settings?.authorizedPhotoUrl ? 'Cambiar foto' : 'Cargar foto'}
+                className="absolute -right-1 -bottom-1 w-5 h-5 rounded-full border border-[var(--bg-canvas)] bg-[var(--accent-gold)] text-[#172119] flex items-center justify-center disabled:opacity-50 cursor-pointer"
+              >
+                <Camera className="w-3 h-3" aria-hidden="true" />
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={handleProfilePhotoSelected}
+              />
+            </div>
             {sidebarOpen && (
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--text-ink)] truncate">
                   Camilo Vidal
                 </p>
                 <p className="text-xs text-[var(--text-muted)] truncate">{session.username}</p>
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoUploading}
+                  className="text-[11px] text-[var(--brand-green)] hover:underline disabled:opacity-50 cursor-pointer"
+                >
+                  {photoUploading ? 'Cargando foto…' : settings?.authorizedPhotoUrl ? 'Cambiar foto' : 'Cargar foto'}
+                </button>
               </div>
             )}
           </div>
+          {photoUploadMessage && (
+            <p role="status" className="px-1 text-xs leading-relaxed text-[var(--text-muted)]">
+              {photoUploadMessage}
+            </p>
+          )}
 
           <nav className="space-y-1.5">
             {navItems.map((item) => {
@@ -149,23 +236,21 @@ export function DashboardPage() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-ink)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer border-t border-[var(--border-hairline)] mt-2 pt-4 ${
+                sidebarOpen ? '' : 'justify-center'
+              }`}
+            >
+              <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {sidebarOpen && <span>Cerrar sesión</span>}
+            </button>
           </nav>
         </div>
 
-        <div className="p-4 border-t border-[var(--border-hairline)]">
-          <button
-            type="button"
-            onClick={handleLogout}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-ink)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer ${
-              sidebarOpen ? '' : 'justify-center'
-            }`}
-          >
-            <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
-            {sidebarOpen && <span>Cerrar sesión</span>}
-          </button>
-        </div>
       </aside>
 
       {/* Main admin workspace */}
@@ -214,9 +299,7 @@ export function DashboardPage() {
               )}
               {activeModule === 'base_datos' && (
                 <AdminDatabaseTab
-                  records={records}
-                  sheetsStatus={sheetsStatus}
-                  onSyncFromSheets={() => loadAdminData(true)}
+                  authFetch={authFetch}
                 />
               )}
               {activeModule === 'agentes_ia' && <AdminAiAgentsTab />}
@@ -225,6 +308,8 @@ export function DashboardPage() {
           )}
         </main>
       </div>
+      </div>
+      <SiteFooter session={session} settings={settings} />
     </div>
   );
 }

@@ -18,10 +18,29 @@ interface LocalStoreData {
   lastSyncAt: string | null;
 }
 
+function normalizeStoredRecord(value: unknown): PoliticalRecord {
+  const raw = (value || {}) as Record<string, unknown>;
+  const legacyPeriod = typeof raw.period === 'string' ? raw.period.trim() : '';
+  const legacyRange = legacyPeriod.split(/\s+[–—-]\s+/, 2);
+  const remaining = { ...raw };
+  delete remaining.category;
+  delete remaining.period;
+  return {
+    ...remaining,
+    chronology_start: typeof raw.chronology_start === 'string' && raw.chronology_start.trim()
+      ? raw.chronology_start
+      : legacyRange[0] || 'Pendiente de confirmar',
+    chronology_end: typeof raw.chronology_end === 'string'
+      ? raw.chronology_end
+      : legacyRange[1] || '',
+  } as PoliticalRecord;
+}
+
 export class SheetsRepositoryService {
   private readonly storePath: string;
   private cachedStore: LocalStoreData | null = null;
   private lastSheetsSyncAt: number = 0;
+  private lastSocialSyncAt: number = 0;
   private lastSheetsError: string | null = null;
   private readonly cacheTtlMs = 60_000; // 60s cache to avoid hitting Google Sheets quota on every public read
 
@@ -37,8 +56,12 @@ export class SheetsRepositoryService {
       try {
         const parsed = JSON.parse(fs.readFileSync(this.storePath, 'utf8')) as LocalStoreData;
         if (Array.isArray(parsed.records) && parsed.settings) {
-          this.cachedStore = parsed;
-          return parsed;
+          const migrated = {
+            ...parsed,
+            records: parsed.records.map(normalizeStoredRecord),
+          };
+          this.saveLocalStore(migrated);
+          return migrated;
         }
       } catch {
         // Re-seed if local file was corrupted
@@ -61,6 +84,44 @@ export class SheetsRepositoryService {
   isSheetsConfigured(): boolean {
     const { spreadsheetId, serviceAccountEmail, privateKey } = this.config.googleSheets;
     return Boolean(spreadsheetId && serviceAccountEmail && privateKey);
+  }
+
+  async listSpreadsheetTabs(): Promise<string[]> {
+    if (!this.isSheetsConfigured()) {
+      throw new Error('Google Sheets no está configurado en este servidor.');
+    }
+    const { spreadsheetId } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}?fields=sheets.properties.title`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!response.ok) throw new Error(`No se pudieron consultar las pestañas (HTTP ${response.status}).`);
+    const body = (await response.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+    return (body.sheets || []).map((sheet) => sheet.properties?.title || '').filter(Boolean);
+  }
+
+  async readSpreadsheetTab(title: string): Promise<{ headers: string[]; rows: string[][] }> {
+    if (!this.isSheetsConfigured()) {
+      throw new Error('Google Sheets no está configurado en este servidor.');
+    }
+    const tabs = await this.listSpreadsheetTabs();
+    if (!tabs.includes(title)) throw new Error('La pestaña seleccionada ya no existe en Google Sheets.');
+    const { spreadsheetId } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    const escapedTitle = title.replace(/'/g, "''");
+    const range = encodeURIComponent(`'${escapedTitle}'!A:ZZ`);
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${range}?majorDimension=ROWS`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!response.ok) throw new Error(`No se pudo leer la pestaña seleccionada (HTTP ${response.status}).`);
+    const body = (await response.json()) as { values?: unknown[][] };
+    const values = (body.values || []).map((row) => row.map((cell) => String(cell ?? '')));
+    const headers = values[0] || [];
+    const width = Math.max(headers.length, ...values.slice(1).map((row) => row.length), 0);
+    while (headers.length < width) headers.push(`Columna ${headers.length + 1}`);
+    return { headers, rows: values.slice(1).filter((row) => row.some((cell) => cell !== '')) };
   }
 
   private async getServiceAccountAccessToken(): Promise<string> {
@@ -141,6 +202,90 @@ export class SheetsRepositoryService {
     return parsed.sort((a, b) => a.sort_order - b.sort_order);
   }
 
+  private async ensureSocialLinksSheet(token: string): Promise<void> {
+    const { spreadsheetId, socialLinksSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) return;
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!metadataRes.ok) throw new Error(`No se pudieron consultar las pestañas de Google Sheets (HTTP ${metadataRes.status}).`);
+    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+    if (metadata.sheets?.some((sheet) => sheet.properties?.title === socialLinksSheetName)) return;
+
+    const createRes = await fetch(`${baseUrl}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: socialLinksSheetName, gridProperties: { frozenRowCount: 1 } } } }] }),
+    });
+    if (!createRes.ok) throw new Error(`No se pudo crear la pestaña ${socialLinksSheetName} (HTTP ${createRes.status}).`);
+    const initRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${socialLinksSheetName}'!A1:E1`)}?valueInputOption=RAW`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [['id', 'red', 'nombre', 'url', 'activo']] }),
+    });
+    if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${socialLinksSheetName} (HTTP ${initRes.status}).`);
+  }
+
+  private async fetchSocialLinksFromGoogleSheets(): Promise<SiteSettings['socialLinks']> {
+    const { spreadsheetId, socialLinksSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) throw new Error('Falta GOOGLE_SHEETS_SPREADSHEET_ID.');
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureSocialLinksSheet(token);
+    const range = encodeURIComponent(`'${socialLinksSheetName}'!A1:E1000`);
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`No se pudo leer ${socialLinksSheetName} (HTTP ${res.status}).`);
+    const body = (await res.json()) as { values?: string[][] };
+    const rows = body.values || [];
+    const headers = (rows[0] || []).map((value) => String(value).trim().toLowerCase());
+    const find = (...names: string[]) => headers.findIndex((header) => names.includes(header));
+    const idIdx = find('id');
+    const networkIdx = find('red', 'network', 'plataforma');
+    const labelIdx = find('nombre', 'label', 'perfil');
+    const urlIdx = find('url', 'enlace', 'link');
+    const enabledIdx = find('activo', 'enabled', 'visible');
+    if ([networkIdx, urlIdx].some((index) => index < 0)) {
+      throw new Error(`La hoja ${socialLinksSheetName} requiere encabezados "red" y "url"; opcionalmente "id", "nombre" y "activo".`);
+    }
+    return rows.slice(1).flatMap((row, index) => {
+      const network = String(row[networkIdx] || '').trim();
+      const url = String(row[urlIdx] || '').trim();
+      if (!network || !url) return [];
+      const enabledValue = enabledIdx < 0 ? 'true' : String(row[enabledIdx] || '').trim().toLowerCase();
+      return [{
+        id: String((idIdx >= 0 ? row[idIdx] : '') || `social-${index + 1}`).trim(),
+        network,
+        label: String((labelIdx >= 0 ? row[labelIdx] : '') || 'Perfil oficial').trim(),
+        url,
+        enabled: ['true', '1', 'sí', 'si', 'activo', 'publico', 'público'].includes(enabledValue),
+      }];
+    });
+  }
+
+  private async writeSocialLinksToGoogleSheets(links: SiteSettings['socialLinks']): Promise<void> {
+    const { spreadsheetId, socialLinksSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) return;
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureSocialLinksSheet(token);
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+    const clearRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${socialLinksSheetName}'!A1:E1000`)}:clear`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!clearRes.ok) throw new Error(`No se pudo limpiar la hoja ${socialLinksSheetName} (HTTP ${clearRes.status}).`);
+    const values = [
+      ['id', 'red', 'nombre', 'url', 'activo'],
+      ...links.map((item) => [item.id, item.network, item.label, item.url, item.enabled ? 'TRUE' : 'FALSE']),
+    ];
+    const writeRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${socialLinksSheetName}'!A1`)}?valueInputOption=RAW`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    if (!writeRes.ok) throw new Error(`No se pudieron guardar las redes en Google Sheets (HTTP ${writeRes.status}).`);
+  }
+
   private async writeAllRecordsToGoogleSheets(records: PoliticalRecord[]): Promise<void> {
     const { spreadsheetId, sheetName } = this.config.googleSheets;
     if (!spreadsheetId) return;
@@ -151,7 +296,7 @@ export class SheetsRepositoryService {
       ...records.slice().sort((a, b) => a.sort_order - b.sort_order).map(recordToRowArray),
     ];
 
-    const clearRange = encodeURIComponent(`${sheetName}!A1:I1000`);
+    const clearRange = encodeURIComponent(`${sheetName}!A1:H1000`);
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
       spreadsheetId
     )}/values/${clearRange}:clear`;
@@ -218,9 +363,15 @@ export class SheetsRepositoryService {
 
   async createRecord(input: Omit<PoliticalRecord, 'id'>): Promise<{ record: PoliticalRecord; sheetsWarning?: string }> {
     const store = this.ensureStoreInitialized();
+    const greatestNumericId = store.records.reduce((max, item) => {
+      const numericId = Number(item.id);
+      return Number.isSafeInteger(numericId) && numericId > max ? numericId : max;
+    }, store.records.length);
+    let nextId = greatestNumericId + 1;
+    while (store.records.some((item) => item.id === String(nextId))) nextId += 1;
     const record: PoliticalRecord = {
       ...input,
-      id: `rec-${crypto.randomUUID().slice(0, 8)}`,
+      id: String(nextId),
     };
     const nextRecords = [...store.records, record].sort((a, b) => a.sort_order - b.sort_order);
     this.saveLocalStore({
@@ -303,14 +454,145 @@ export class SheetsRepositoryService {
     return this.ensureStoreInitialized().settings;
   }
 
-  updateSettings(next: SiteSettings): SiteSettings {
+  async getPublicSettings(forceSync = false): Promise<SiteSettings> {
+    if (this.isSheetsConfigured()) {
+      const now = Date.now();
+      if (forceSync || now - this.lastSocialSyncAt >= this.cacheTtlMs) {
+        try {
+          const socialLinks = await this.fetchSocialLinksFromGoogleSheets();
+          const store = this.ensureStoreInitialized();
+          this.saveLocalStore({ ...store, settings: { ...store.settings, socialLinks } });
+          this.lastSocialSyncAt = now;
+          this.lastSheetsError = null;
+        } catch (err) {
+          this.lastSheetsError = err instanceof Error ? err.message : 'Error consultando redes sociales en Google Sheets.';
+        }
+      }
+    }
+    return this.ensureStoreInitialized().settings;
+  }
+
+  async updateProfilePhotoUrlInInformationSheet(photoUrl: string): Promise<string | undefined> {
+    if (!this.isSheetsConfigured()) {
+      return 'Google Sheets no está configurado en este servidor; la foto quedó guardada localmente.';
+    }
+
+    const { spreadsheetId, informationSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) return 'Falta configurar el ID de Google Sheets.';
+
+    try {
+      const token = await this.getServiceAccountAccessToken();
+      const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+      const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!metadataRes.ok) {
+        throw new Error(`No se pudo consultar las pestañas de Google Sheets (HTTP ${metadataRes.status}).`);
+      }
+
+      const metadata = (await metadataRes.json()) as {
+        sheets?: Array<{ properties?: { sheetId?: number; title?: string } }>;
+      };
+      let infoSheet = metadata.sheets?.find(
+        (sheet) => sheet.properties?.title === informationSheetName
+      )?.properties;
+
+      if (!infoSheet?.sheetId) {
+        const createRes = await fetch(`${baseUrl}:batchUpdate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            requests: [{ addSheet: { properties: { title: informationSheetName, gridProperties: { frozenRowCount: 1 } } } }],
+          }),
+        });
+        if (!createRes.ok) {
+          throw new Error(`No se pudo crear la pestaña ${informationSheetName} (HTTP ${createRes.status}).`);
+        }
+        const created = (await createRes.json()) as {
+          replies?: Array<{ addSheet?: { properties?: { sheetId?: number; title?: string } } }>;
+        };
+        infoSheet = created.replies?.[0]?.addSheet?.properties;
+        if (!infoSheet?.sheetId) throw new Error('Google Sheets no devolvió el identificador de Información.');
+
+        const initializeRes = await fetch(
+          `${baseUrl}/values/${encodeURIComponent(`'${informationSheetName}'!A1:B2`)}?valueInputOption=RAW`,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              values: [
+                ['Logo', 'URL de almacenamiento'],
+                ['Foto de perfil', photoUrl],
+              ],
+            }),
+          }
+        );
+        if (!initializeRes.ok) {
+          throw new Error(`No se pudo inicializar la tabla de Información (HTTP ${initializeRes.status}).`);
+        }
+        return undefined;
+      }
+
+      const headerRes = await fetch(
+        `${baseUrl}/values/${encodeURIComponent(`'${informationSheetName}'!A1:B2`)}?majorDimension=ROWS`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!headerRes.ok) {
+        throw new Error(`No se pudo leer la tabla de Información (HTTP ${headerRes.status}).`);
+      }
+      const headerBody = (await headerRes.json()) as { values?: string[][] };
+      const values = headerBody.values || [];
+      if (values[0]?.[0] !== 'Logo' || values[0]?.[1] !== 'URL de almacenamiento') {
+        return `La pestaña ${informationSheetName} existe, pero sus encabezados no coinciden con “Logo” y “URL de almacenamiento”; no se modificó.`;
+      }
+
+      const updateRes = await fetch(
+        `${baseUrl}/values/${encodeURIComponent(`'${informationSheetName}'!B2`)}?valueInputOption=RAW`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values: [[photoUrl]] }),
+        }
+      );
+      if (!updateRes.ok) {
+        throw new Error(`No se pudo guardar la URL en Información (HTTP ${updateRes.status}).`);
+      }
+      return undefined;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'No se pudo actualizar la pestaña Información.';
+    }
+  }
+
+  async updateSettings(next: SiteSettings): Promise<{ settings: SiteSettings; sheetsWarning?: string }> {
     const store = this.ensureStoreInitialized();
     this.saveLocalStore({
       ...store,
       settings: next,
       lastSyncAt: new Date().toISOString(),
     });
-    return next;
+    let sheetsWarning: string | undefined;
+    if (this.isSheetsConfigured()) {
+      try {
+        await this.writeSocialLinksToGoogleSheets(next.socialLinks);
+        this.lastSocialSyncAt = Date.now();
+        this.lastSheetsError = null;
+      } catch (err) {
+        sheetsWarning = err instanceof Error ? err.message : 'No se pudieron guardar las redes en Google Sheets.';
+        this.lastSheetsError = sheetsWarning;
+      }
+    } else {
+      sheetsWarning = 'Google Sheets no está configurado en este servidor; las redes quedaron guardadas localmente.';
+    }
+    return { settings: next, sheetsWarning };
   }
 
   getSheetsStatus(): SheetsStatusInfo {

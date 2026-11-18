@@ -1,11 +1,11 @@
 import type { PoliticalRecord, RecordSection, RecordVisibility } from '../../shared/types';
+import { inferSectionFromText } from '../validation/records';
 
 export const SHEET_HEADERS = [
   'id',
-  'section',
-  'category',
   'title',
-  'period',
+  'chronology_start',
+  'chronology_end',
   'detail',
   'status',
   'visibility',
@@ -22,7 +22,7 @@ export function rowArrayToRecord(row: string[], headers: string[]): PoliticalRec
   const indexMap = new Map<string, number>();
   headers.forEach((h, i) => indexMap.set(h.trim().toLowerCase(), i));
 
-  const get = (key: (typeof SHEET_HEADERS)[number]): string => {
+  const get = (key: string): string => {
     const idx = indexMap.get(key);
     return idx !== undefined ? String(row[idx] ?? '').trim() : '';
   };
@@ -31,16 +31,18 @@ export function rowArrayToRecord(row: string[], headers: string[]): PoliticalRec
   const title = get('title');
   if (!id || !title) return null;
 
+  const section: RecordSection = inferSectionFromText(`${title} ${get('detail')}`);
+
   const rawVis = get('visibility').toLowerCase();
   const visibility: RecordVisibility = rawVis === 'privada' ? 'privada' : 'publica';
   const sortOrderRaw = Number(get('sort_order'));
 
   return {
     id,
-    section: (get('section') || 'actividad_jac') as RecordSection,
-    category: get('category') || 'Actividad comunitaria JAC',
+    section,
     title,
-    period: get('period') || 'Pendiente de confirmar',
+    chronology_start: get('chronology_start') || 'Pendiente de confirmar',
+    chronology_end: get('chronology_end'),
     detail: get('detail'),
     status: get('status') || 'Confirmado',
     visibility,
@@ -51,10 +53,9 @@ export function rowArrayToRecord(row: string[], headers: string[]): PoliticalRec
 export function recordToRowArray(record: PoliticalRecord): string[] {
   return [
     record.id,
-    record.section,
-    record.category,
     record.title,
-    record.period,
+    record.chronology_start,
+    record.chronology_end,
     record.detail,
     record.status,
     record.visibility,

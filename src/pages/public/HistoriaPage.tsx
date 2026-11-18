@@ -1,3 +1,6 @@
+import { PublicPortrait } from '../../components/PublicPortrait';
+import { usePublicData } from '../../context/PublicDataContext';
+
 const BIO_TIMELINE = [
   {
     date: '17 de abril de 1994',
@@ -42,18 +45,25 @@ const BIO_TIMELINE = [
 ];
 
 export function HistoriaPage() {
+  const { settings } = usePublicData();
+
   return (
     <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 space-y-12">
-      <header className="space-y-4 border-b border-[var(--border-hairline)] pb-8">
-        <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
-          Biografía completa · Datos confirmados
-        </p>
-        <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
-          Historia de Andrés Camilo Vidal Canchón
-        </h1>
-        <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
-          Relato cronológico fiel a los hitos educativos y comunitarios confirmados, redactado sin agregar cargos, títulos, cifras ni circunstancias externas no verificadas.
-        </p>
+      <header className="border-b border-[var(--border-hairline)] pb-8">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_15rem] gap-8 items-center">
+          <div className="space-y-4">
+            <p className="text-xs font-medium tracking-widest uppercase text-[var(--accent-gold)]">
+              Biografía completa · Datos confirmados
+            </p>
+            <h1 className="font-editorial text-4xl sm:text-5xl font-semibold text-[var(--text-ink)]">
+              Historia de Andrés Camilo Vidal Canchón
+            </h1>
+            <p className="text-base text-[var(--text-muted)] max-w-prose leading-relaxed">
+              Relato cronológico fiel a los hitos educativos y comunitarios confirmados, redactado sin agregar cargos, títulos, cifras ni circunstancias externas no verificadas.
+            </p>
+          </div>
+          <PublicPortrait src={settings?.authorizedPhotoUrl} />
+        </div>
       </header>
 
       <ol className="space-y-6">

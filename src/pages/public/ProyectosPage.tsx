@@ -1,4 +1,5 @@
 import { Building2, Code2, Landmark } from 'lucide-react';
+import { formatRecordChronology } from '../../../shared/records';
 import { usePublicData } from '../../context/PublicDataContext';
 
 export function ProyectosPage() {
@@ -55,7 +56,7 @@ export function ProyectosPage() {
                 {jacProjects.map((item) => (
                   <li key={item.id} className="space-y-1">
                     <p className="text-xs font-mono-tabular text-[var(--accent-gold)]">
-                      {item.period} · {item.status}
+                      {formatRecordChronology(item)} · {item.status}
                     </p>
                     <p className="text-base font-semibold text-[var(--text-ink)]">{item.title}</p>
                     <p className="text-sm text-[var(--text-muted)]">{item.detail}</p>
@@ -81,7 +82,7 @@ export function ProyectosPage() {
                 {nexusProjects.map((item) => (
                   <li key={item.id} className="space-y-1">
                     <p className="text-xs font-mono-tabular text-[var(--accent-gold)]">
-                      {item.period} · {item.status}
+                      {formatRecordChronology(item)} · {item.status}
                     </p>
                     <p className="text-base font-semibold text-[var(--text-ink)]">{item.title}</p>
                     <p className="text-sm text-[var(--text-muted)]">{item.detail}</p>
@@ -107,7 +108,7 @@ export function ProyectosPage() {
                 {edilProjects.map((item) => (
                   <li key={item.id} className="space-y-1">
                     <p className="text-xs font-mono-tabular text-[var(--accent-gold)]">
-                      {item.period} · {item.status}
+                      {formatRecordChronology(item)} · {item.status}
                     </p>
                     <p className="text-base font-semibold text-[var(--text-ink)]">{item.title}</p>
                     <p className="text-sm text-[var(--text-muted)]">{item.detail}</p>

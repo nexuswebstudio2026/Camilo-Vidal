@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inferSectionFromCategory, validatePoliticalRecordInput } from './records';
+import { inferSectionFromText, validatePoliticalRecordInput } from './records';
 
 test('validatePoliticalRecordInput accepts valid record and sanitizes angle brackets', () => {
   const res = validatePoliticalRecordInput({
-    category: 'Presidencia JAC',
-    title: 'Gestión comunitaria <script>',
-    period: 'Julio de 2022',
+    title: 'Presidencia: gestión comunitaria <script>',
+    chronology_start: 'Julio de 2022',
+    chronology_end: '',
     status: 'Confirmado',
     detail: 'Detalle válido con más de diez caracteres.',
     visibility: 'publica',
@@ -14,16 +14,16 @@ test('validatePoliticalRecordInput accepts valid record and sanitizes angle brac
   });
 
   assert.equal(res.ok, true);
-  assert.equal(res.data?.title, 'Gestión comunitaria script');
+  assert.equal(res.data?.title, 'Presidencia: gestión comunitaria script');
   assert.equal(res.data?.section, 'presidente_jac');
   assert.equal(res.data?.visibility, 'publica');
 });
 
 test('validatePoliticalRecordInput rejects missing required fields', () => {
   const res = validatePoliticalRecordInput({
-    category: '',
     title: 'ab',
-    period: '',
+    chronology_start: '',
+    chronology_end: '',
     status: '',
     detail: 'corto',
     visibility: 'otra',
@@ -32,14 +32,14 @@ test('validatePoliticalRecordInput rejects missing required fields', () => {
 
   assert.equal(res.ok, false);
   assert.ok(res.errors?.title);
-  assert.ok(res.errors?.period);
+  assert.ok(res.errors?.chronology_start);
   assert.ok(res.errors?.detail);
   assert.ok(res.errors?.visibility);
   assert.ok(res.errors?.sort_order);
 });
 
-test('inferSectionFromCategory maps categories accurately', () => {
-  assert.equal(inferSectionFromCategory('Secretaría JAC'), 'secretario_jac');
-  assert.equal(inferSectionFromCategory('Proyecto Nexus Web Studio'), 'proyecto_nexus');
-  assert.equal(inferSectionFromCategory('Proyección futura como edil'), 'proyeccion_edil');
+test('inferSectionFromText maps political record titles into page sections', () => {
+  assert.equal(inferSectionFromText('Secretario de Junta'), 'secretario_jac');
+  assert.equal(inferSectionFromText('Proyecto Nexus Web Studio'), 'proyecto_nexus');
+  assert.equal(inferSectionFromText('Aspiración futura como edil'), 'aspiracion_edil');
 });
