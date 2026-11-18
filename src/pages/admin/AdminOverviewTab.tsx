@@ -135,7 +135,7 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
             Configuración de proyectos, redes sociales y medios autorizados
           </h2>
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            Los cambios se reflejan en Inicio, Vida personal, Proyectos y el pie de página.
+            Los cambios se reflejan en Inicio, Vida académica, Proyectos y el pie de página.
           </p>
         </div>
 
@@ -243,7 +243,7 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
 
         <div className="space-y-3 border-t border-[var(--border-hairline)] pt-5">
           <h3 className="text-sm font-semibold text-[var(--text-ink)]">
-            Fotografía autorizada y nota personal
+            Fotografía autorizada
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -273,18 +273,6 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="personal-note" className="block text-xs font-medium text-[var(--text-ink)]">
-              Nota autorizada en Vida personal
-            </label>
-            <textarea
-              id="personal-note"
-              rows={3}
-              value={form.personalNote}
-              onChange={(e) => setForm({ ...form, personalNote: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
-            />
-          </div>
         </div>
 
         <div className="flex justify-end">

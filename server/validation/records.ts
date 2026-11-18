@@ -18,12 +18,12 @@ export interface ValidationResult<T> {
 export function inferSectionFromText(text: string): RecordSection {
   const norm = text.trim().toLowerCase();
   if (norm.includes('secretar')) return 'secretario_jac';
+  if (norm.includes('candidat') || norm.includes('aspiraci') || norm.includes('edil')) return 'aspiracion_edil';
   if (norm.includes('presiden') || norm.includes('junta')) return 'presidente_jac';
   if (norm.includes('nexus')) return 'proyecto_nexus';
   if (norm.includes('proyecto jac')) return 'proyecto_jac';
   if (norm.includes('campaña') || norm.includes('campana') || norm.includes('proyecto edil')) return 'proyecto_edil';
   if (norm.includes('proyecci') || norm.includes('condicional')) return 'proyeccion_edil';
-  if (norm.includes('aspiraci') || norm.includes('edil')) return 'aspiracion_edil';
   return 'actividad_jac';
 }
 

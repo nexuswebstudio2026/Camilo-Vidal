@@ -10,7 +10,7 @@ import { HistoriaPage } from './pages/public/HistoriaPage';
 import { HomePage } from './pages/public/HomePage';
 import { LoginPage } from './pages/public/LoginPage';
 import { ProyectosPage } from './pages/public/ProyectosPage';
-import { VidaPersonalPage } from './pages/public/VidaPersonalPage';
+import { VidaAcademicaPage } from './pages/public/VidaAcademicaPage';
 import { VidaPoliticaPage } from './pages/public/VidaPoliticaPage';
 
 interface RedirectState {
@@ -72,13 +72,14 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/vida-personal"
+        path="/vida-academica"
         element={
           <PublicLayout>
-            <VidaPersonalPage />
+            <VidaAcademicaPage />
           </PublicLayout>
         }
       />
+      <Route path="/vida-personal" element={<Navigate to="/vida-academica" replace />} />
       <Route
         path="/vida-politica"
         element={

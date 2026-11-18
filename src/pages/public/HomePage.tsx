@@ -82,16 +82,16 @@ export function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 border-t border-[var(--bg-elevated)] pt-8">
             <Link
-              to="/vida-personal"
+              to="/vida-academica"
               className="group p-6 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] hover:border-[var(--accent-gold)] transition-colors flex flex-col justify-between space-y-4"
             >
               <div className="space-y-2">
                 <Compass className="w-5 h-5 text-[var(--brand-green)]" aria-hidden="true" />
                 <h3 className="font-editorial text-2xl font-semibold text-[var(--text-ink)]">
-                  Vida personal
+                  Vida académica
                 </h3>
                 <p className="text-sm text-[var(--text-muted)]">
-                  Orígenes, estudios confirmados, áreas de conocimiento y vocación comunitaria.
+                  Formación académica, programas, cursos, diplomados y conocimientos registrados.
                 </p>
               </div>
               <span className="text-xs font-semibold text-[var(--brand-green)] group-hover:underline">

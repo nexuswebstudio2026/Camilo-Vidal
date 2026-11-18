@@ -22,6 +22,29 @@ export interface PoliticalRecord {
   sort_order: number;
 }
 
+export type AcademicRecordType =
+  | 'Primaria'
+  | 'Bachillerato'
+  | 'Pregrado'
+  | 'Posgrado'
+  | 'Curso'
+  | 'Diplomado'
+  | 'Área de conocimiento'
+  | 'Otro';
+
+export interface AcademicRecord {
+  id: string;
+  type: AcademicRecordType;
+  title: string;
+  institution: string;
+  chronology_start: string;
+  chronology_end: string;
+  status: string;
+  detail: string;
+  visibility: RecordVisibility;
+  sort_order: number;
+}
+
 export interface SocialLinkItem {
   id: string;
   network: 'Facebook' | 'Instagram' | 'X' | 'TikTok' | 'Threads' | 'YouTube' | 'WhatsApp' | string;

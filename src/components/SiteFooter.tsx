@@ -43,6 +43,10 @@ export function SiteFooter({ session, settings }: SiteFooterProps) {
               Trayectoria comunitaria
             </Link>
             <span aria-hidden="true">·</span>
+            <Link to="/vida-academica" className="hover:text-[var(--text-ink)]">
+              Vida académica
+            </Link>
+            <span aria-hidden="true">·</span>
             <Link to={session.authenticated ? '/dashboard' : '/iniciar-sesion'} className="hover:text-[var(--text-ink)]">
               {session.authenticated ? 'Panel privado' : 'Acceso administrativo'}
             </Link>

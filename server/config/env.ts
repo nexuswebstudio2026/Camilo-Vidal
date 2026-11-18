@@ -18,6 +18,7 @@ export interface ServerConfig {
     sheetName: string;
     informationSheetName: string;
     socialLinksSheetName: string;
+    academicSheetName: string;
     serviceAccountEmail: string | null;
     privateKey: string | null;
   };
@@ -83,6 +84,7 @@ export function loadServerConfig(): ServerConfig {
       sheetName: process.env.GOOGLE_SHEETS_SHEET_NAME?.trim() || 'Registros',
       informationSheetName: process.env.GOOGLE_SHEETS_INFORMATION_SHEET_NAME?.trim() || 'Información',
       socialLinksSheetName: process.env.GOOGLE_SHEETS_SOCIAL_LINKS_SHEET_NAME?.trim() || 'Redes sociales',
+      academicSheetName: process.env.GOOGLE_SHEETS_ACADEMIC_SHEET_NAME?.trim() || 'Vida académica',
       serviceAccountEmail,
       privateKey: privateKey ? privateKey.replace(/\\n/g, '\n') : null,
     },

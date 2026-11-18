@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
+import type { AcademicRecord, AcademicRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
 import { INITIAL_RECORDS, INITIAL_SETTINGS } from '../data/seed-data';
 import {
@@ -11,6 +11,38 @@ import {
   SHEET_HEADERS,
   validateSheetHeaders,
 } from './sheets-mapper';
+
+const ACADEMIC_HEADERS = [
+  'id', 'type', 'title', 'institution', 'chronology_start', 'chronology_end',
+  'status', 'detail', 'visibility', 'sort_order',
+] as const;
+
+const INITIAL_ACADEMIC_ROWS: Omit<AcademicRecord, 'id'>[] = [
+  {
+    type: 'Primaria', title: 'Estudios de primaria', institution: 'Escuela Rafael Pombo de Girardot',
+    chronology_start: '', chronology_end: '', status: 'Finalizado',
+    detail: 'Cursó y terminó la primaria en la Escuela Rafael Pombo de Girardot, Cundinamarca.',
+    visibility: 'publica', sort_order: 10,
+  },
+  {
+    type: 'Bachillerato', title: 'Bachiller académico', institution: 'Colegio INEM de Pasto',
+    chronology_start: '', chronology_end: '2012', status: 'Finalizado',
+    detail: 'Se graduó como bachiller en 2012 en el colegio INEM de la ciudad de Pasto.',
+    visibility: 'publica', sort_order: 20,
+  },
+  {
+    type: 'Pregrado', title: 'Administración Pública', institution: 'Escuela Superior de Administración Pública (ESAP)',
+    chronology_start: '', chronology_end: '', status: 'En curso · cuarto semestre',
+    detail: 'Actualmente cursa cuarto semestre de Administración Pública en la ESAP. Este registro describe un programa en curso y no un título terminado.',
+    visibility: 'publica', sort_order: 30,
+  },
+  {
+    type: 'Área de conocimiento', title: 'Áreas de conocimiento declaradas', institution: '',
+    chronology_start: '', chronology_end: '', status: 'Conocimientos amplios',
+    detail: 'Contaduría, administración de empresas, mercadeo, derecho, programación web y administración pública. Esta ficha no afirma títulos ni certificaciones en esas áreas.',
+    visibility: 'publica', sort_order: 40,
+  },
+];
 
 interface LocalStoreData {
   records: PoliticalRecord[];
@@ -593,6 +625,133 @@ export class SheetsRepositoryService {
       sheetsWarning = 'Google Sheets no está configurado en este servidor; las redes quedaron guardadas localmente.';
     }
     return { settings: next, sheetsWarning };
+  }
+
+  private async ensureAcademicSheet(token: string): Promise<void> {
+    const { spreadsheetId, academicSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) throw new Error('Falta configurar GOOGLE_SHEETS_SPREADSHEET_ID.');
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!metadataRes.ok) throw new Error(`No se pudieron consultar las hojas (HTTP ${metadataRes.status}).`);
+    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+    const exists = metadata.sheets?.some((sheet) => sheet.properties?.title === academicSheetName);
+    if (!exists) {
+      const createRes = await fetch(`${baseUrl}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: academicSheetName, gridProperties: { frozenRowCount: 1 } } } }] }),
+      });
+      if (!createRes.ok) throw new Error(`No se pudo crear la hoja ${academicSheetName} (HTTP ${createRes.status}).`);
+      const seeded: string[][] = [
+        [...ACADEMIC_HEADERS],
+        ...INITIAL_ACADEMIC_ROWS.map((record, index) => this.academicRecordToRow({ ...record, id: String(index + 1) })),
+      ];
+      const initRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1`)}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: seeded }),
+      });
+      if (!initRes.ok) throw new Error(`No se pudieron inicializar los registros académicos (HTTP ${initRes.status}).`);
+      return;
+    }
+    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1:J1`)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!headerRes.ok) throw new Error(`No se pudo leer la hoja ${academicSheetName} (HTTP ${headerRes.status}).`);
+    const headerBody = (await headerRes.json()) as { values?: string[][] };
+    if (!headerBody.values?.[0]?.length) {
+      const initRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1`)}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [[...ACADEMIC_HEADERS]] }),
+      });
+      if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${academicSheetName}.`);
+    }
+  }
+
+  private academicRecordToRow(record: AcademicRecord): string[] {
+    return [record.id, record.type, record.title, record.institution, record.chronology_start,
+      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order)];
+  }
+
+  private async readAcademicRecords(): Promise<AcademicRecord[]> {
+    const { spreadsheetId, academicSheetName } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureAcademicSheet(token);
+    const range = encodeURIComponent(`'${academicSheetName}'!A1:J1000`);
+    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${range}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`No se pudieron leer los registros académicos (HTTP ${response.status}).`);
+    const body = (await response.json()) as { values?: string[][] };
+    const rows = body.values || [];
+    const headers = (rows[0] || []).map((value) => value.trim().toLowerCase());
+    const index = (name: string) => headers.indexOf(name);
+    if (['id', 'type', 'title', 'institution', 'chronology_start', 'chronology_end', 'status', 'detail', 'visibility', 'sort_order'].some((name) => index(name) < 0)) {
+      throw new Error(`La hoja ${academicSheetName} requiere las columnas académicas inicializadas por el sitio.`);
+    }
+    const read = (row: string[], name: string) => String(row[index(name)] ?? '').trim();
+    return rows.slice(1).flatMap((row) => {
+      const id = read(row, 'id');
+      const title = read(row, 'title');
+      if (!id || !title) return [];
+      const rawType = read(row, 'type') as AcademicRecordType;
+      const types: AcademicRecordType[] = ['Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Diplomado', 'Área de conocimiento', 'Otro'];
+      const sort = Number(read(row, 'sort_order'));
+      return [{
+        id, type: types.includes(rawType) ? rawType : 'Otro', title, institution: read(row, 'institution'),
+        chronology_start: read(row, 'chronology_start'), chronology_end: read(row, 'chronology_end'),
+        status: read(row, 'status') || 'Finalizado', detail: read(row, 'detail'),
+        visibility: read(row, 'visibility').toLowerCase() === 'privada' ? 'privada' as const : 'publica' as const,
+        sort_order: Number.isFinite(sort) ? sort : 100,
+      }];
+    }).sort((a, b) => a.sort_order - b.sort_order);
+  }
+
+  async getAcademicRecords(publicOnly = false): Promise<AcademicRecord[]> {
+    const records = await this.readAcademicRecords();
+    return publicOnly ? records.filter((record) => record.visibility === 'publica') : records;
+  }
+
+  private async writeAcademicRecords(records: AcademicRecord[]): Promise<void> {
+    const { spreadsheetId, academicSheetName } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureAcademicSheet(token);
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}`;
+    const range = encodeURIComponent(`'${academicSheetName}'!A1:J1000`);
+    const clearRes = await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (!clearRes.ok) throw new Error(`No se pudo limpiar la hoja académica (HTTP ${clearRes.status}).`);
+    const values = [[...ACADEMIC_HEADERS], ...records.slice().sort((a, b) => a.sort_order - b.sort_order).map((record) => this.academicRecordToRow(record))];
+    const writeRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1`)}?valueInputOption=RAW`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    if (!writeRes.ok) throw new Error(`No se pudieron guardar los registros académicos (HTTP ${writeRes.status}).`);
+  }
+
+  async createAcademicRecord(input: Omit<AcademicRecord, 'id'>): Promise<AcademicRecord> {
+    const records = await this.readAcademicRecords();
+    const nextId = records.reduce((max, item) => Math.max(max, Number(item.id) || 0), records.length) + 1;
+    const record = { ...input, id: String(nextId) };
+    await this.writeAcademicRecords([...records, record]);
+    return record;
+  }
+
+  async updateAcademicRecord(id: string, input: Omit<AcademicRecord, 'id'>): Promise<AcademicRecord | null> {
+    const records = await this.readAcademicRecords();
+    if (!records.some((record) => record.id === id)) return null;
+    const updated = { ...input, id };
+    await this.writeAcademicRecords(records.map((record) => record.id === id ? updated : record));
+    return updated;
+  }
+
+  async deleteAcademicRecord(id: string): Promise<boolean> {
+    const records = await this.readAcademicRecords();
+    if (!records.some((record) => record.id === id)) return false;
+    await this.writeAcademicRecords(records.filter((record) => record.id !== id));
+    return true;
   }
 
   getSheetsStatus(): SheetsStatusInfo {

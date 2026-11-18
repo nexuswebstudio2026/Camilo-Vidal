@@ -26,17 +26,16 @@ function RecordRow({ item }: { item: PoliticalRecord }) {
 export function VidaPoliticaPage() {
   const { records, settings, loading, error } = usePublicData();
 
-  const secRecords = records.filter(
-    (r) => r.section === 'secretario_jac' || (r.section as string) === 'secretario'
+  const orderedRecords = [...records]
+    .filter((r) => r.visibility === 'publica')
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const secRecords = orderedRecords.filter((r) => r.section === 'secretario_jac');
+  const presTimelineRecords = orderedRecords.filter(
+    (r) => r.section === 'presidente_jac' && !/candidat|aspiraci|edil/i.test(`${r.title} ${r.detail}`)
   );
-  const presTimelineRecords = records.filter(
-    (r) =>
-      r.section === 'presidente_jac' ||
-      (r.section as string) === 'presidente' ||
-      r.section === 'actividad_jac'
+  const aspiracionRecords = orderedRecords.filter(
+    (r) => r.section === 'aspiracion_edil' || /candidat|aspiraci|edil/i.test(`${r.title} ${r.detail}`)
   );
-  const aspiracionRecords = records.filter((r) => r.section === 'aspiracion_edil');
-  const proyeccionRecords = records.filter((r) => r.section === 'proyeccion_edil');
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 space-y-14">
@@ -132,47 +131,14 @@ export function VidaPoliticaPage() {
               <h2 id="etapa-aspiracion" className="font-editorial text-3xl font-semibold text-[var(--text-ink)]">
                 Aspiración a edil de la Comuna 8
               </h2>
-              <p className="text-sm text-[var(--text-muted)] max-w-prose">
-                Propósito ciudadano proyectado hacia las elecciones locales de octubre de 2027 en Pasto. No representa una candidatura formal inscrita ni un cargo público actual.
-              </p>
             </div>
-            {aspiracionRecords.length === 0 ? (
-              <p className="text-sm text-[var(--text-muted)]">
-                Sin notas públicas adicionales en esta sección.
-              </p>
-            ) : (
-              <ul className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-6">
-                {aspiracionRecords.map((item) => (
-                  <RecordRow key={item.id} item={item} />
-                ))}
-              </ul>
-            )}
+            <ul className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-6">
+              {aspiracionRecords.map((item) => (
+                <RecordRow key={item.id} item={item} />
+              ))}
+            </ul>
           </section>
 
-          {/* Etapa 4: Condicional */}
-          <section
-            aria-labelledby="etapa-condicional"
-            className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-6 sm:p-8 space-y-4"
-          >
-            <div className="space-y-1">
-              <p className="font-mono-tabular text-xs uppercase tracking-widest text-[var(--text-muted)]">
-                Etapa 04 · Etapa condicional (no constituye experiencia actual)
-              </p>
-              <h2 id="etapa-condicional" className="font-editorial text-3xl font-semibold text-[var(--text-ink)]">
-                Proyección futura como edil
-              </h2>
-              <p className="text-sm text-[var(--text-muted)] max-w-prose">
-                Espacio reservado exclusivamente para registrar iniciativas, decisiones y ejercicios de rendición de cuentas en caso de resultar elegido en un proceso electoral futuro.
-              </p>
-            </div>
-            {proyeccionRecords.length > 0 && (
-              <ul className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-6">
-                {proyeccionRecords.map((item) => (
-                  <RecordRow key={item.id} item={item} />
-                ))}
-              </ul>
-            )}
-          </section>
         </div>
       )}
     </div>

@@ -51,8 +51,8 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <NavLink to="/" end className={navLinkClass}>
               Inicio
             </NavLink>
-            <NavLink to="/vida-personal" className={navLinkClass}>
-              Vida personal
+            <NavLink to="/vida-academica" className={navLinkClass}>
+              Vida académica
             </NavLink>
             <NavLink to="/vida-politica" className={navLinkClass}>
               Vida política
@@ -110,7 +110,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           >
             {[
               { to: '/', label: 'Inicio' },
-              { to: '/vida-personal', label: 'Vida personal' },
+              { to: '/vida-academica', label: 'Vida académica' },
               { to: '/vida-politica', label: 'Vida política' },
               { to: '/proyectos', label: 'Proyectos' },
               { to: '/historia', label: 'Biografía' },

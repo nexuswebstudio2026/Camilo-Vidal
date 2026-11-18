@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 const PUBLIC_ROUTES = [
   { path: '/', title: 'Inicio', desc: 'Portada institucional, biografía breve y marco visual autorizado.' },
-  { path: '/vida-personal', title: 'Vida personal', desc: 'Infancia, formación académica confirmada y saberes.' },
+  { path: '/vida-academica', title: 'Vida académica', desc: 'Estudios, programas, cursos, diplomados y conocimientos registrados.' },
   { path: '/vida-politica', title: 'Vida política', desc: 'Etapas en la JAC, hitos comunitarios, aspiración 2027 y proyección condicional.' },
   { path: '/proyectos', title: 'Proyectos', desc: 'Junta de Acción Comunal, Nexus Web Studio y proyecto hacia edil.' },
   { path: '/historia', title: 'Biografía', desc: 'Línea temporal completa y verificada.' },

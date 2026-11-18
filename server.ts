@@ -8,10 +8,35 @@ import { AutomationsService } from './server/ai/automations.service';
 import { AuthService } from './server/auth/auth.service';
 import { loadServerConfig } from './server/config/env';
 import { SheetsRepositoryService } from './server/sheets/sheets.service';
+import type { AcademicRecord, AcademicRecordType, RecordVisibility } from './shared/types';
 import {
   validatePoliticalRecordInput,
   validateSiteSettingsInput,
 } from './server/validation/records';
+
+const academicRecordTypes: AcademicRecordType[] = [
+  'Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Diplomado', 'Área de conocimiento', 'Otro',
+];
+
+function validateAcademicInput(raw: Record<string, unknown>): Omit<AcademicRecord, 'id'> | null {
+  const clean = (value: unknown, max = 2000) => typeof value === 'string'
+    ? value.replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max)
+    : '';
+  const type = clean(raw.type, 80) as AcademicRecordType;
+  const title = clean(raw.title, 180);
+  const status = clean(raw.status, 100);
+  const detail = clean(raw.detail, 2500);
+  const sortOrder = Number(raw.sort_order);
+  const rawVisibility = clean(raw.visibility, 20).toLowerCase();
+  if (!academicRecordTypes.includes(type) || title.length < 2 || !status || detail.length < 5 ||
+      !Number.isFinite(sortOrder) || sortOrder < 0 || sortOrder > 9999 ||
+      !['publica', 'privada'].includes(rawVisibility)) return null;
+  return {
+    type, title, institution: clean(raw.institution, 180),
+    chronology_start: clean(raw.chronology_start, 120), chronology_end: clean(raw.chronology_end, 120),
+    status, detail, visibility: rawVisibility as RecordVisibility, sort_order: Math.round(sortOrder),
+  };
+}
 
 async function bootstrap() {
   const config = loadServerConfig();
@@ -48,6 +73,14 @@ async function bootstrap() {
       res.json({ records, settings });
     } catch {
       res.status(500).json({ error: 'No fue posible cargar la información pública.' });
+    }
+  });
+
+  app.get('/api/public/academic-records', async (_req, res) => {
+    try {
+      res.json({ records: await sheetsService.getAcademicRecords(true) });
+    } catch {
+      res.status(503).json({ error: 'No fue posible cargar la vida académica desde Google Sheets.' });
     }
   });
 
@@ -111,6 +144,39 @@ async function bootstrap() {
     } catch {
       res.status(500).json({ error: 'No fue posible consultar los registros administrativos.' });
     }
+  });
+
+  adminRouter.get('/academic-records', async (_req, res) => {
+    try {
+      res.json({ records: await sheetsService.getAcademicRecords(false) });
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'No fue posible consultar los registros académicos.' });
+    }
+  });
+
+  adminRouter.post('/academic-records', async (req, res) => {
+    const input = validateAcademicInput(req.body || {});
+    if (!input) { res.status(400).json({ error: 'Revisa los campos del registro académico.' }); return; }
+    try { res.status(201).json({ record: await sheetsService.createAcademicRecord(input) }); }
+    catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo crear el registro académico.' }); }
+  });
+
+  adminRouter.put('/academic-records/:id', async (req, res) => {
+    const input = validateAcademicInput(req.body || {});
+    if (!input) { res.status(400).json({ error: 'Revisa los campos del registro académico.' }); return; }
+    try {
+      const record = await sheetsService.updateAcademicRecord(req.params.id, input);
+      if (!record) { res.status(404).json({ error: 'Registro académico no encontrado.' }); return; }
+      res.json({ record });
+    } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo actualizar el registro académico.' }); }
+  });
+
+  adminRouter.delete('/academic-records/:id', async (req, res) => {
+    try {
+      const deleted = await sheetsService.deleteAcademicRecord(req.params.id);
+      if (!deleted) { res.status(404).json({ error: 'Registro académico no encontrado.' }); return; }
+      res.json({ ok: true });
+    } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo eliminar el registro académico.' }); }
   });
 
   adminRouter.get('/sheets/tabs', async (_req, res) => {
