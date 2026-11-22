@@ -111,8 +111,10 @@ export async function createApp(options: { includeFrontend?: boolean } = {}) {
   // Public data endpoints (ONLY visibility === 'publica')
   app.get('/api/public/content', async (_req, res) => {
     try {
-      const records = await sheetsService.getPublicRecords();
-      const settings = await sheetsService.getPublicSettings();
+      const [records, settings] = await Promise.all([
+        sheetsService.getPublicRecords(),
+        sheetsService.getPublicSettings(),
+      ]);
       res.json({ records, settings });
     } catch {
       res.status(500).json({ error: 'No fue posible cargar la información pública.' });
