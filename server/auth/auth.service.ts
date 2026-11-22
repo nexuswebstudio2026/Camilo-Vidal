@@ -12,7 +12,7 @@ import {
   signSessionToken,
   verifyPassword,
   verifySessionToken,
-} from './session-token';
+} from './session-token.js';
 
 interface StoredAdminAuth {
   username: string;

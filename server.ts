@@ -3,17 +3,17 @@ import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AuditorService } from './server/ai/auditor.service';
-import { AiAgentsService } from './server/ai/agents.service';
-import { AutomationsService } from './server/ai/automations.service';
-import { AuthService, type AuthenticatedRequest } from './server/auth/auth.service';
-import { loadServerConfig } from './server/config/env';
-import { SheetsRepositoryService } from './server/sheets/sheets.service';
+import { AuditorService } from './server/ai/auditor.service.js';
+import { AiAgentsService } from './server/ai/agents.service.js';
+import { AutomationsService } from './server/ai/automations.service.js';
+import { AuthService, type AuthenticatedRequest } from './server/auth/auth.service.js';
+import { loadServerConfig } from './server/config/env.js';
+import { SheetsRepositoryService } from './server/sheets/sheets.service.js';
 import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, RecordVisibility } from './shared/types';
 import {
   validatePoliticalRecordInput,
   validateSiteSettingsInput,
-} from './server/validation/records';
+} from './server/validation/records.js';
 
 const academicRecordTypes: AcademicRecordType[] = [
   'Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Diplomado', 'Área de conocimiento', 'Otro',

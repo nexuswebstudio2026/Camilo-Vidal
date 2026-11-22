@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AuditReport } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
-import { collectAuditAllowlistedFiles, EXCLUDED_PATTERNS } from './audit-allowlist';
-import { formatAiErrorSpanish, isTransientAiError } from './auditor-helpers';
+import { collectAuditAllowlistedFiles, EXCLUDED_PATTERNS } from './audit-allowlist.js';
+import { formatAiErrorSpanish, isTransientAiError } from './auditor-helpers.js';
 
 const PRIMARY_MODEL = 'gemini-4-hydrogen';
 const FALLBACK_MODEL = 'gemini-3.1-flash-lite';

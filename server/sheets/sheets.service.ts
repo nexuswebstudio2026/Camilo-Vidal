@@ -3,15 +3,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
-import { INITIAL_RECORDS, INITIAL_SETTINGS } from '../data/seed-data';
-import { compareRecordsById, sortRecordsById } from '../../shared/employment';
+import { INITIAL_RECORDS, INITIAL_SETTINGS } from '../data/seed-data.js';
+import { compareRecordsById, sortRecordsById } from '../../shared/employment.js';
 import {
   filterPublicRecords,
   recordToRowArray,
   rowArrayToRecord,
   SHEET_HEADERS,
   validateSheetHeaders,
-} from './sheets-mapper';
+} from './sheets-mapper.js';
 
 const ACADEMIC_HEADERS = [
   'id', 'type', 'title', 'institution', 'chronology_start', 'chronology_end',

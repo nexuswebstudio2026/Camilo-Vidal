@@ -1,5 +1,5 @@
 import type { PoliticalRecord, RecordSection, RecordVisibility } from '../../shared/types';
-import { inferSectionFromText } from '../validation/records';
+import { inferSectionFromText } from '../validation/records.js';
 
 export const SHEET_HEADERS = [
   'id',

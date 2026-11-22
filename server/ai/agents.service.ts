@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AiAgentProfile } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
-import { collectAuditAllowlistedFiles, isAllowlistedRelativePath } from './audit-allowlist';
+import { collectAuditAllowlistedFiles, isAllowlistedRelativePath } from './audit-allowlist.js';
 
 type OpenAiResponse = {
   output_text?: string;
