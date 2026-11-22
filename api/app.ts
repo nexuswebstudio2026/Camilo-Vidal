@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Request, Response } from 'express';
-import { createApp } from '../server';
+import { createApp } from '../server.ts';
 
 type ExpressApp = Awaited<ReturnType<typeof createApp>>;
 type VercelLikeRequest = IncomingMessage & Partial<Request> & {
