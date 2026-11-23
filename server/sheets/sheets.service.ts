@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
+import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, ProjectRecord, ProjectRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
 import { INITIAL_RECORDS, INITIAL_SETTINGS } from '../data/seed-data.js';
 import { compareRecordsById, sortRecordsById } from '../../shared/employment.js';
+import { sortProjectRecords } from '../../shared/projects.js';
 import {
   filterPublicRecords,
   recordToRowArray,
@@ -19,6 +20,11 @@ const ACADEMIC_HEADERS = [
 ] as const;
 
 const EMPLOYMENT_HEADERS = [
+  'id', 'type', 'title', 'organization', 'chronology_start', 'chronology_end',
+  'status', 'detail', 'visibility', 'sort_order',
+] as const;
+
+const PROJECT_HEADERS = [
   'id', 'type', 'title', 'organization', 'chronology_start', 'chronology_end',
   'status', 'detail', 'visibility', 'sort_order',
 ] as const;
@@ -952,6 +958,129 @@ export class SheetsRepositoryService {
     const records = await this.readEmploymentRecords();
     if (!records.some((record) => record.id === id)) return false;
     await this.writeEmploymentRecords(records.filter((record) => record.id !== id));
+    return true;
+  }
+
+  private async ensureProjectsSheet(token: string): Promise<void> {
+    const { spreadsheetId, projectsSheetName } = this.config.googleSheets;
+    if (!spreadsheetId) throw new Error('Falta configurar GOOGLE_SHEETS_SPREADSHEET_ID.');
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!metadataRes.ok) throw new Error(`No se pudieron consultar las hojas (HTTP ${metadataRes.status}).`);
+    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+    const exists = metadata.sheets?.some((sheet) => sheet.properties?.title === projectsSheetName);
+    if (!exists) {
+      const createRes = await fetch(`${baseUrl}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: projectsSheetName, gridProperties: { frozenRowCount: 1 } } } }] }),
+      });
+      if (!createRes.ok) throw new Error(`No se pudo crear la hoja ${projectsSheetName} (HTTP ${createRes.status}).`);
+    }
+
+    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${projectsSheetName}'!A1:J1`)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!headerRes.ok) throw new Error(`No se pudo leer la hoja ${projectsSheetName} (HTTP ${headerRes.status}).`);
+    const headerBody = (await headerRes.json()) as { values?: string[][] };
+    const headers = (headerBody.values?.[0] || []).map((value) => value.trim().toLowerCase());
+    if (headers.length === 0) {
+      const initRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${projectsSheetName}'!A1`)}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [[...PROJECT_HEADERS]] }),
+      });
+      if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${projectsSheetName}.`);
+      return;
+    }
+    if (PROJECT_HEADERS.some((header) => !headers.includes(header))) {
+      throw new Error(`La hoja ${projectsSheetName} debe tener los encabezados: ${PROJECT_HEADERS.join(', ')}.`);
+    }
+  }
+
+  private projectRecordToRow(record: ProjectRecord): string[] {
+    return [record.id, record.type, record.title, record.organization, record.chronology_start,
+      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order)];
+  }
+
+  private async readProjectRecords(): Promise<ProjectRecord[]> {
+    const { spreadsheetId, projectsSheetName } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureProjectsSheet(token);
+    const range = encodeURIComponent(`'${projectsSheetName}'!A1:J1000`);
+    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${range}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`No se pudieron leer los proyectos (HTTP ${response.status}).`);
+    const body = (await response.json()) as { values?: string[][] };
+    const rows = body.values || [];
+    const headers = (rows[0] || []).map((value) => value.trim().toLowerCase());
+    const index = (name: string) => headers.indexOf(name);
+    if (PROJECT_HEADERS.some((name) => index(name) < 0)) {
+      throw new Error(`La hoja ${projectsSheetName} requiere las columnas de proyectos inicializadas por el sitio.`);
+    }
+    const read = (row: string[], name: string) => String(row[index(name)] ?? '').trim();
+    const types: ProjectRecordType[] = ['Junta de Acción Comunal', 'Nexus Web Studio', 'Campaña política como edil', 'Otro'];
+    const records = rows.slice(1).flatMap((row) => {
+      const id = read(row, 'id');
+      const title = read(row, 'title');
+      if (!id || !title) return [];
+      const rawType = read(row, 'type') as ProjectRecordType;
+      const sortOrder = Number(read(row, 'sort_order'));
+      return [{
+        id, type: types.includes(rawType) ? rawType : 'Otro', title, organization: read(row, 'organization'),
+        chronology_start: read(row, 'chronology_start'), chronology_end: read(row, 'chronology_end'),
+        status: read(row, 'status') || 'En curso', detail: read(row, 'detail'),
+        visibility: read(row, 'visibility').toLowerCase() === 'privada' ? 'privada' as const : 'publica' as const,
+        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
+      }];
+    });
+    return sortProjectRecords(records);
+  }
+
+  async getProjectRecords(publicOnly = false): Promise<ProjectRecord[]> {
+    const records = await this.readProjectRecords();
+    return sortProjectRecords(publicOnly ? records.filter((record) => record.visibility === 'publica') : records);
+  }
+
+  private async writeProjectRecords(records: ProjectRecord[]): Promise<void> {
+    const { spreadsheetId, projectsSheetName } = this.config.googleSheets;
+    const token = await this.getServiceAccountAccessToken();
+    await this.ensureProjectsSheet(token);
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}`;
+    const range = encodeURIComponent(`'${projectsSheetName}'!A1:J1000`);
+    const clearRes = await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (!clearRes.ok) throw new Error(`No se pudo limpiar la hoja de proyectos (HTTP ${clearRes.status}).`);
+    const values = [[...PROJECT_HEADERS], ...sortProjectRecords(records).map((record) => this.projectRecordToRow(record))];
+    const writeRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${projectsSheetName}'!A1`)}?valueInputOption=RAW`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    if (!writeRes.ok) throw new Error(`No se pudieron guardar los proyectos (HTTP ${writeRes.status}).`);
+  }
+
+  async createProjectRecord(input: Omit<ProjectRecord, 'id'>): Promise<ProjectRecord> {
+    const records = await this.readProjectRecords();
+    const nextId = records.reduce((max, item) => Math.max(max, Number(item.id) || 0), records.length) + 1;
+    const record = { ...input, id: String(nextId) };
+    await this.writeProjectRecords([...records, record]);
+    return record;
+  }
+
+  async updateProjectRecord(id: string, input: Omit<ProjectRecord, 'id'>): Promise<ProjectRecord | null> {
+    const records = await this.readProjectRecords();
+    if (!records.some((record) => record.id === id)) return null;
+    const updated = { ...input, id };
+    await this.writeProjectRecords(records.map((record) => record.id === id ? updated : record));
+    return updated;
+  }
+
+  async deleteProjectRecord(id: string): Promise<boolean> {
+    const records = await this.readProjectRecords();
+    if (!records.some((record) => record.id === id)) return false;
+    await this.writeProjectRecords(records.filter((record) => record.id !== id));
     return true;
   }
 

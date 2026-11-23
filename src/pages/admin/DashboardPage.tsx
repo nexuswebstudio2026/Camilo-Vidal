@@ -1,4 +1,4 @@
-import { BookOpen, BriefcaseBusiness, Camera, Database, Globe, Landmark, LayoutDashboard, LogOut } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, Camera, Database, FolderKanban, Globe, Landmark, LayoutDashboard, LogOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import type { PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../../shared/types';
@@ -9,10 +9,11 @@ import { AdminOverviewTab } from './AdminOverviewTab';
 import { AdminPoliticalCrudTab } from './AdminPoliticalCrudTab';
 import { AdminAcademicCrudTab } from './AdminAcademicCrudTab';
 import { AdminEmploymentCrudTab } from './AdminEmploymentCrudTab';
+import { AdminProjectsCrudTab } from './AdminProjectsCrudTab';
 import { AdminPublicSiteTab } from './AdminPublicSiteTab';
 import { SiteFooter } from '../../components/SiteFooter';
 
-type AdminModule = 'inicio' | 'vida_politica' | 'vida_academica' | 'vida_laboral' | 'base_datos' | 'sitio_publico';
+type AdminModule = 'inicio' | 'vida_politica' | 'vida_academica' | 'vida_laboral' | 'proyectos' | 'base_datos' | 'sitio_publico';
 
 export function DashboardPage() {
   const { session, loading: authLoading, logout, authFetch } = useAuth();
@@ -138,6 +139,7 @@ export function DashboardPage() {
     { id: 'vida_politica', label: 'Vida política', icon: Landmark },
     { id: 'vida_academica', label: 'Vida académica', icon: BookOpen },
     { id: 'vida_laboral', label: 'Vida laboral', icon: BriefcaseBusiness },
+    { id: 'proyectos', label: 'Proyectos', icon: FolderKanban },
     { id: 'base_datos', label: 'Base de datos', icon: Database },
     { id: 'sitio_publico', label: 'Sitio público', icon: Globe },
   ];
@@ -301,6 +303,7 @@ export function DashboardPage() {
               )}
               {activeModule === 'vida_academica' && <AdminAcademicCrudTab />}
               {activeModule === 'vida_laboral' && <AdminEmploymentCrudTab />}
+              {activeModule === 'proyectos' && <AdminProjectsCrudTab />}
               {activeModule === 'base_datos' && (
                 <AdminDatabaseTab
                   authFetch={authFetch}

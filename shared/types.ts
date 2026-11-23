@@ -53,6 +53,25 @@ export type EmploymentRecordType =
   | 'Emprendimiento'
   | 'Otro';
 
+export type ProjectRecordType =
+  | 'Junta de Acción Comunal'
+  | 'Nexus Web Studio'
+  | 'Campaña política como edil'
+  | 'Otro';
+
+export interface ProjectRecord {
+  id: string;
+  type: ProjectRecordType;
+  title: string;
+  organization: string;
+  chronology_start: string;
+  chronology_end: string;
+  status: string;
+  detail: string;
+  visibility: RecordVisibility;
+  sort_order: number;
+}
+
 export interface EmploymentRecord {
   id: string;
   type: EmploymentRecordType;

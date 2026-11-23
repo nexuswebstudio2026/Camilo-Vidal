@@ -9,7 +9,7 @@ import { AutomationsService } from './server/ai/automations.service.js';
 import { AuthService, type AuthenticatedRequest } from './server/auth/auth.service.js';
 import { loadServerConfig } from './server/config/env.js';
 import { SheetsRepositoryService } from './server/sheets/sheets.service.js';
-import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, RecordVisibility } from './shared/types';
+import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, ProjectRecord, ProjectRecordType, RecordVisibility } from './shared/types';
 import {
   validatePoliticalRecordInput,
   validateSiteSettingsInput,
@@ -54,6 +54,30 @@ function validateEmploymentInput(raw: Record<string, unknown>): Omit<EmploymentR
   const sortOrder = Number(raw.sort_order);
   const rawVisibility = clean(raw.visibility, 20).toLowerCase();
   if (!employmentRecordTypes.includes(type) || title.length < 2 || !status || detail.length < 5 ||
+      !Number.isFinite(sortOrder) || sortOrder < 0 || sortOrder > 9999 ||
+      !['publica', 'privada'].includes(rawVisibility)) return null;
+  return {
+    type, title, organization: clean(raw.organization, 180),
+    chronology_start: clean(raw.chronology_start, 120), chronology_end: clean(raw.chronology_end, 120),
+    status, detail, visibility: rawVisibility as RecordVisibility, sort_order: Math.round(sortOrder),
+  };
+}
+
+const projectRecordTypes: ProjectRecordType[] = [
+  'Junta de Acción Comunal', 'Nexus Web Studio', 'Campaña política como edil', 'Otro',
+];
+
+function validateProjectInput(raw: Record<string, unknown>): Omit<ProjectRecord, 'id'> | null {
+  const clean = (value: unknown, max = 2000) => typeof value === 'string'
+    ? value.replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max)
+    : '';
+  const type = clean(raw.type, 80) as ProjectRecordType;
+  const title = clean(raw.title, 180);
+  const status = clean(raw.status, 100);
+  const detail = clean(raw.detail, 2500);
+  const sortOrder = Number(raw.sort_order);
+  const rawVisibility = clean(raw.visibility, 20).toLowerCase();
+  if (!projectRecordTypes.includes(type) || title.length < 2 || !status || detail.length < 5 ||
       !Number.isFinite(sortOrder) || sortOrder < 0 || sortOrder > 9999 ||
       !['publica', 'privada'].includes(rawVisibility)) return null;
   return {
@@ -134,6 +158,14 @@ export async function createApp(options: { includeFrontend?: boolean } = {}) {
       res.json({ records: await sheetsService.getEmploymentRecords(true) });
     } catch {
       res.status(503).json({ error: 'No fue posible cargar la vida laboral desde Google Sheets.' });
+    }
+  });
+
+  app.get('/api/public/project-records', async (_req, res) => {
+    try {
+      res.json({ records: await sheetsService.getProjectRecords(true) });
+    } catch {
+      res.status(503).json({ error: 'No fue posible cargar los proyectos desde Google Sheets.' });
     }
   });
 
@@ -287,6 +319,39 @@ export async function createApp(options: { includeFrontend?: boolean } = {}) {
       if (!deleted) { res.status(404).json({ error: 'Registro laboral no encontrado.' }); return; }
       res.json({ ok: true });
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo eliminar el registro laboral.' }); }
+  });
+
+  adminRouter.get('/project-records', async (_req, res) => {
+    try {
+      res.json({ records: await sheetsService.getProjectRecords(false) });
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'No fue posible consultar los proyectos.' });
+    }
+  });
+
+  adminRouter.post('/project-records', async (req, res) => {
+    const input = validateProjectInput(req.body || {});
+    if (!input) { res.status(400).json({ error: 'Revisa los campos del proyecto.' }); return; }
+    try { res.status(201).json({ record: await sheetsService.createProjectRecord(input) }); }
+    catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo crear el proyecto.' }); }
+  });
+
+  adminRouter.put('/project-records/:id', async (req, res) => {
+    const input = validateProjectInput(req.body || {});
+    if (!input) { res.status(400).json({ error: 'Revisa los campos del proyecto.' }); return; }
+    try {
+      const record = await sheetsService.updateProjectRecord(req.params.id, input);
+      if (!record) { res.status(404).json({ error: 'Proyecto no encontrado.' }); return; }
+      res.json({ record });
+    } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo actualizar el proyecto.' }); }
+  });
+
+  adminRouter.delete('/project-records/:id', async (req, res) => {
+    try {
+      const deleted = await sheetsService.deleteProjectRecord(req.params.id);
+      if (!deleted) { res.status(404).json({ error: 'Proyecto no encontrado.' }); return; }
+      res.json({ ok: true });
+    } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : 'No se pudo eliminar el proyecto.' }); }
   });
 
   adminRouter.get('/sheets/tabs', async (_req, res) => {
