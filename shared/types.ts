@@ -22,12 +22,24 @@ export interface PoliticalRecord {
   sort_order: number;
 }
 
+export interface CommunityManagementRecord {
+  id: string;
+  title: string;
+  category: string;
+  chronology: string;
+  status: string;
+  detail: string;
+  visibility: RecordVisibility;
+  sort_order: number;
+}
+
 export type AcademicRecordType =
   | 'Primaria'
   | 'Bachillerato'
   | 'Pregrado'
   | 'Posgrado'
   | 'Curso'
+  | 'Seminario'
   | 'Diplomado'
   | 'Área de conocimiento'
   | 'Otro';
@@ -41,6 +53,7 @@ export interface AcademicRecord {
   chronology_end: string;
   status: string;
   detail: string;
+  support_url: string;
   visibility: RecordVisibility;
   sort_order: number;
 }
@@ -52,6 +65,8 @@ export type EmploymentRecordType =
   | 'Cargo público'
   | 'Emprendimiento'
   | 'Otro';
+
+export type EmploymentSector = 'Público' | 'Privado' | 'Comunitario' | 'Sin clasificar';
 
 export type ProjectRecordType =
   | 'Junta de Acción Comunal'
@@ -75,6 +90,7 @@ export interface ProjectRecord {
 export interface EmploymentRecord {
   id: string;
   type: EmploymentRecordType;
+  sector: EmploymentSector;
   title: string;
   organization: string;
   chronology_start: string;

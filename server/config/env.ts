@@ -25,6 +25,7 @@ export interface ServerConfig {
     employmentSheetName: string;
     usersSheetName: string;
     projectsSheetName: string;
+    communityManagementsSheetName: string;
     serviceAccountEmail: string | null;
     privateKey: string | null;
   };
@@ -118,6 +119,7 @@ export function loadServerConfig(): ServerConfig {
       employmentSheetName: process.env.GOOGLE_SHEETS_EMPLOYMENT_SHEET_NAME?.trim() || 'Vida laboral',
       usersSheetName: process.env.GOOGLE_SHEETS_USERS_SHEET_NAME?.trim() || 'Usuarios',
       projectsSheetName: process.env.GOOGLE_SHEETS_PROJECTS_SHEET_NAME?.trim() || 'Proyectos',
+      communityManagementsSheetName: process.env.GOOGLE_SHEETS_COMMUNITY_MANAGEMENTS_SHEET_NAME?.trim() || 'Gestiones realizadas',
       serviceAccountEmail,
       privateKey: privateKey ? privateKey.replace(/\\n/g, '\n') : null,
     },

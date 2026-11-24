@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, ProjectRecord, ProjectRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
+import type { AcademicRecord, AcademicRecordType, CommunityManagementRecord, EmploymentRecord, EmploymentRecordType, EmploymentSector, ProjectRecord, ProjectRecordType, PoliticalRecord, SheetsStatusInfo, SiteSettings } from '../../shared/types';
 import type { ServerConfig } from '../config/env';
 import { INITIAL_RECORDS, INITIAL_SETTINGS } from '../data/seed-data.js';
-import { compareRecordsById, sortRecordsById } from '../../shared/employment.js';
+import { compareRecordsById, inferEmploymentSector, sortRecordsById } from '../../shared/employment.js';
 import { sortProjectRecords } from '../../shared/projects.js';
 import {
   filterPublicRecords,
@@ -16,12 +16,12 @@ import {
 
 const ACADEMIC_HEADERS = [
   'id', 'type', 'title', 'institution', 'chronology_start', 'chronology_end',
-  'status', 'detail', 'visibility', 'sort_order',
+  'status', 'detail', 'visibility', 'sort_order', 'URL del soporte',
 ] as const;
 
 const EMPLOYMENT_HEADERS = [
   'id', 'type', 'title', 'organization', 'chronology_start', 'chronology_end',
-  'status', 'detail', 'visibility', 'sort_order',
+  'status', 'detail', 'visibility', 'sort_order', 'sector',
 ] as const;
 
 const PROJECT_HEADERS = [
@@ -29,29 +29,37 @@ const PROJECT_HEADERS = [
   'status', 'detail', 'visibility', 'sort_order',
 ] as const;
 
+const COMMUNITY_MANAGEMENT_HEADERS = [
+  'id', 'title', 'category', 'chronology', 'status', 'detail', 'visibility', 'sort_order',
+] as const;
+
 const INITIAL_ACADEMIC_ROWS: Omit<AcademicRecord, 'id'>[] = [
   {
     type: 'Primaria', title: 'Estudios de primaria', institution: 'Escuela Rafael Pombo de Girardot',
     chronology_start: '', chronology_end: '', status: 'Finalizado',
     detail: 'Cursó y terminó la primaria en la Escuela Rafael Pombo de Girardot, Cundinamarca.',
+    support_url: '',
     visibility: 'publica', sort_order: 10,
   },
   {
     type: 'Bachillerato', title: 'Bachiller académico', institution: 'Colegio INEM de Pasto',
     chronology_start: '', chronology_end: '2012', status: 'Finalizado',
     detail: 'Se graduó como bachiller en 2012 en el colegio INEM de la ciudad de Pasto.',
+    support_url: '',
     visibility: 'publica', sort_order: 20,
   },
   {
     type: 'Pregrado', title: 'Administración Pública', institution: 'Escuela Superior de Administración Pública (ESAP)',
     chronology_start: '', chronology_end: '', status: 'En curso · cuarto semestre',
     detail: 'Actualmente cursa cuarto semestre de Administración Pública en la ESAP. Este registro describe un programa en curso y no un título terminado.',
+    support_url: '',
     visibility: 'publica', sort_order: 30,
   },
   {
     type: 'Área de conocimiento', title: 'Áreas de conocimiento declaradas', institution: '',
     chronology_start: '', chronology_end: '', status: 'Conocimientos amplios',
     detail: 'Contaduría, administración de empresas, mercadeo, derecho, programación web y administración pública. Esta ficha no afirma títulos ni certificaciones en esas áreas.',
+    support_url: '',
     visibility: 'publica', sort_order: 40,
   },
 ];
@@ -217,7 +225,7 @@ export class SheetsRepositoryService {
     const { spreadsheetId, sheetName } = this.config.googleSheets;
     if (!spreadsheetId) throw new Error('Falta GOOGLE_SHEETS_SPREADSHEET_ID.');
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
-    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!metadataRes.ok) throw new Error(`No se pudieron consultar las pestañas de Google Sheets (HTTP ${metadataRes.status}).`);
@@ -316,7 +324,7 @@ export class SheetsRepositoryService {
     const { spreadsheetId, socialLinksSheetName } = this.config.googleSheets;
     if (!spreadsheetId) return;
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
-    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!metadataRes.ok) throw new Error(`No se pudieron consultar las pestañas de Google Sheets (HTTP ${metadataRes.status}).`);
@@ -718,8 +726,9 @@ export class SheetsRepositoryService {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!metadataRes.ok) throw new Error(`No se pudieron consultar las hojas (HTTP ${metadataRes.status}).`);
-    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
-    const exists = metadata.sheets?.some((sheet) => sheet.properties?.title === academicSheetName);
+    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { sheetId?: number; title?: string; gridProperties?: { columnCount?: number } } }> };
+    const academicSheet = metadata.sheets?.find((sheet) => sheet.properties?.title === academicSheetName);
+    const exists = Boolean(academicSheet);
     if (!exists) {
       const createRes = await fetch(`${baseUrl}:batchUpdate`, {
         method: 'POST',
@@ -739,7 +748,16 @@ export class SheetsRepositoryService {
       if (!initRes.ok) throw new Error(`No se pudieron inicializar los registros académicos (HTTP ${initRes.status}).`);
       return;
     }
-    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1:J1`)}`, {
+    const sheetId = academicSheet?.properties?.sheetId;
+    if (sheetId !== undefined && (academicSheet?.properties?.gridProperties?.columnCount ?? 0) < ACADEMIC_HEADERS.length) {
+      const resizeRes = await fetch(`${baseUrl}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId, gridProperties: { columnCount: ACADEMIC_HEADERS.length } }, fields: 'gridProperties.columnCount' } }] }),
+      });
+      if (!resizeRes.ok) throw new Error(`No se pudo ampliar la hoja ${academicSheetName} para el enlace de soporte.`);
+    }
+    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1:K1`)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!headerRes.ok) throw new Error(`No se pudo leer la hoja ${academicSheetName} (HTTP ${headerRes.status}).`);
@@ -751,19 +769,29 @@ export class SheetsRepositoryService {
         body: JSON.stringify({ values: [[...ACADEMIC_HEADERS]] }),
       });
       if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${academicSheetName}.`);
+    } else {
+      const existingHeaders = headerBody.values[0].map((value) => String(value || '').trim().toLowerCase());
+      if (!existingHeaders.includes('url del soporte')) {
+        const supportHeaderRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!K1`)}?valueInputOption=RAW`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [['URL del soporte']] }),
+        });
+        if (!supportHeaderRes.ok) throw new Error(`No se pudo añadir la columna de soporte a ${academicSheetName}.`);
+      }
     }
   }
 
   private academicRecordToRow(record: AcademicRecord): string[] {
     return [record.id, record.type, record.title, record.institution, record.chronology_start,
-      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order)];
+      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order), record.support_url];
   }
 
   private async readAcademicRecords(): Promise<AcademicRecord[]> {
     const { spreadsheetId, academicSheetName } = this.config.googleSheets;
     const token = await this.getServiceAccountAccessToken();
     await this.ensureAcademicSheet(token);
-    const range = encodeURIComponent(`'${academicSheetName}'!A1:J1000`);
+    const range = encodeURIComponent(`'${academicSheetName}'!A1:K1000`);
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${range}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -776,17 +804,26 @@ export class SheetsRepositoryService {
       throw new Error(`La hoja ${academicSheetName} requiere las columnas académicas inicializadas por el sitio.`);
     }
     const read = (row: string[], name: string) => String(row[index(name)] ?? '').trim();
-    return rows.slice(1).flatMap((row) => {
+    const records = rows.slice(1).flatMap((row) => {
       const id = read(row, 'id');
       const title = read(row, 'title');
       if (!id || !title) return [];
       const rawType = read(row, 'type') as AcademicRecordType;
-      const types: AcademicRecordType[] = ['Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Diplomado', 'Área de conocimiento', 'Otro'];
+      const types: AcademicRecordType[] = ['Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Seminario', 'Diplomado', 'Área de conocimiento', 'Otro'];
       const sort = Number(read(row, 'sort_order'));
+      const rawSupportUrl = read(row, 'url del soporte') || read(row, 'support_url');
+      let supportUrl = '';
+      if (rawSupportUrl) {
+        try {
+          const parsed = new URL(rawSupportUrl);
+          if (parsed.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(parsed.hostname)) supportUrl = rawSupportUrl;
+        } catch { /* Ignore malformed or non-Drive support URLs. */ }
+      }
       return [{
         id, type: types.includes(rawType) ? rawType : 'Otro', title, institution: read(row, 'institution'),
         chronology_start: read(row, 'chronology_start'), chronology_end: read(row, 'chronology_end'),
         status: read(row, 'status') || 'Finalizado', detail: read(row, 'detail'),
+        support_url: supportUrl,
         visibility: read(row, 'visibility').toLowerCase() === 'privada' ? 'privada' as const : 'publica' as const,
         sort_order: Number.isFinite(sort) ? sort : 100,
       }];
@@ -803,15 +840,40 @@ export class SheetsRepositoryService {
     const token = await this.getServiceAccountAccessToken();
     await this.ensureAcademicSheet(token);
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}`;
-    const range = encodeURIComponent(`'${academicSheetName}'!A1:J1000`);
+    const range = encodeURIComponent(`'${academicSheetName}'!A1:K1000`);
     const clearRes = await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     if (!clearRes.ok) throw new Error(`No se pudo limpiar la hoja académica (HTTP ${clearRes.status}).`);
-    const values = [[...ACADEMIC_HEADERS], ...records.slice().sort((a, b) => a.sort_order - b.sort_order).map((record) => this.academicRecordToRow(record))];
+    const orderedRecords = records.slice().sort((a, b) => a.sort_order - b.sort_order);
+    const values = [[...ACADEMIC_HEADERS], ...orderedRecords.map((record) => this.academicRecordToRow(record))];
     const writeRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${academicSheetName}'!A1`)}?valueInputOption=RAW`, {
       method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values }),
     });
     if (!writeRes.ok) throw new Error(`No se pudieron guardar los registros académicos (HTTP ${writeRes.status}).`);
+    const linkedRows = orderedRecords.flatMap((record, index) => record.support_url ? [{
+      updateCells: {
+        range: { sheetId: 0, startRowIndex: index + 1, endRowIndex: index + 2, startColumnIndex: 10, endColumnIndex: 11 },
+        rows: [{ values: [{ textFormatRuns: [{ startIndex: 0, format: { link: { uri: record.support_url } } }] }] }],
+        fields: 'textFormatRuns',
+      },
+    }] : []);
+    if (linkedRows.length) {
+      const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!metadataRes.ok) throw new Error(`No se pudo vincular los soportes académicos (HTTP ${metadataRes.status}).`);
+      const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { sheetId?: number; title?: string } }> };
+      const sheetId = metadata.sheets?.find((sheet) => sheet.properties?.title === academicSheetName)?.properties?.sheetId;
+      if (sheetId === undefined) throw new Error(`No se encontró la hoja ${academicSheetName} para enlazar los soportes.`);
+      const linkRequests = linkedRows.map((request) => ({
+        ...request,
+        updateCells: { ...request.updateCells, range: { ...request.updateCells.range, sheetId } },
+      }));
+      const linkRes = await fetch(`${baseUrl}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: linkRequests }),
+      });
+      if (!linkRes.ok) throw new Error(`No se pudieron aplicar los enlaces de soporte (HTTP ${linkRes.status}).`);
+    }
   }
 
   async createAcademicRecord(input: Omit<AcademicRecord, 'id'>): Promise<AcademicRecord> {
@@ -841,12 +903,13 @@ export class SheetsRepositoryService {
     const { spreadsheetId, employmentSheetName } = this.config.googleSheets;
     if (!spreadsheetId) throw new Error('Falta configurar GOOGLE_SHEETS_SPREADSHEET_ID.');
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
-    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title)`, {
+    const metadataRes = await fetch(`${baseUrl}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!metadataRes.ok) throw new Error(`No se pudieron consultar las hojas (HTTP ${metadataRes.status}).`);
-    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
-    const exists = metadata.sheets?.some((sheet) => sheet.properties?.title === employmentSheetName);
+    const metadata = (await metadataRes.json()) as { sheets?: Array<{ properties?: { sheetId?: number; title?: string; gridProperties?: { columnCount?: number } } }> };
+    const employmentSheet = metadata.sheets?.find((sheet) => sheet.properties?.title === employmentSheetName);
+    const exists = Boolean(employmentSheet);
     if (!exists) {
       const createRes = await fetch(`${baseUrl}:batchUpdate`, {
         method: 'POST',
@@ -862,7 +925,16 @@ export class SheetsRepositoryService {
       if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${employmentSheetName}.`);
       return;
     }
-    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${employmentSheetName}'!A1:J1`)}`, {
+    const sheetId = employmentSheet?.properties?.sheetId;
+    if (sheetId !== undefined && (employmentSheet?.properties?.gridProperties?.columnCount ?? 0) < EMPLOYMENT_HEADERS.length) {
+      const resizeRes = await fetch(`${baseUrl}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId, gridProperties: { columnCount: EMPLOYMENT_HEADERS.length } }, fields: 'gridProperties.columnCount' } }] }),
+      });
+      if (!resizeRes.ok) throw new Error(`No se pudo ampliar la hoja ${employmentSheetName} para la columna Sector.`);
+    }
+    const headerRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${employmentSheetName}'!A1:K1`)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!headerRes.ok) throw new Error(`No se pudo leer la hoja ${employmentSheetName} (HTTP ${headerRes.status}).`);
@@ -874,19 +946,26 @@ export class SheetsRepositoryService {
         body: JSON.stringify({ values: [[...EMPLOYMENT_HEADERS]] }),
       });
       if (!initRes.ok) throw new Error(`No se pudieron crear los encabezados de ${employmentSheetName}.`);
+    } else if (!(headerBody.values[0] || []).some((value) => String(value || '').trim().toLowerCase() === 'sector')) {
+      const sectorHeaderRes = await fetch(`${baseUrl}/values/${encodeURIComponent(`'${employmentSheetName}'!K1`)}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [['sector']] }),
+      });
+      if (!sectorHeaderRes.ok) throw new Error(`No se pudo añadir la columna Sector a ${employmentSheetName}.`);
     }
   }
 
   private employmentRecordToRow(record: EmploymentRecord): string[] {
     return [record.id, record.type, record.title, record.organization, record.chronology_start,
-      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order)];
+      record.chronology_end, record.status, record.detail, record.visibility, String(record.sort_order), record.sector];
   }
 
   private async readEmploymentRecords(): Promise<EmploymentRecord[]> {
     const { spreadsheetId, employmentSheetName } = this.config.googleSheets;
     const token = await this.getServiceAccountAccessToken();
     await this.ensureEmploymentSheet(token);
-    const range = encodeURIComponent(`'${employmentSheetName}'!A1:J1000`);
+    const range = encodeURIComponent(`'${employmentSheetName}'!A1:K1000`);
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${range}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -900,20 +979,45 @@ export class SheetsRepositoryService {
     }
     const read = (row: string[], name: string) => String(row[index(name)] ?? '').trim();
     const types: EmploymentRecordType[] = ['Empleado', 'Independiente', 'Contratista', 'Cargo público', 'Emprendimiento', 'Otro'];
-    return rows.slice(1).flatMap((row) => {
+    const sectors: EmploymentSector[] = ['Público', 'Privado', 'Comunitario', 'Sin clasificar'];
+    const records = rows.slice(1).flatMap((row) => {
       const id = read(row, 'id');
       const title = read(row, 'title');
       if (!id || !title) return [];
       const rawType = read(row, 'type') as EmploymentRecordType;
+      const type = types.includes(rawType) ? rawType : 'Otro';
+      const organization = read(row, 'organization');
+      const rawSector = read(row, 'sector') as EmploymentSector;
       const sort = Number(read(row, 'sort_order'));
       return [{
-        id, type: types.includes(rawType) ? rawType : 'Otro', title, organization: read(row, 'organization'),
+        id, type, title, organization,
+        sector: sectors.includes(rawSector) ? rawSector : inferEmploymentSector({ type, title, organization }),
         chronology_start: read(row, 'chronology_start'), chronology_end: read(row, 'chronology_end'),
         status: read(row, 'status') || 'Finalizado', detail: read(row, 'detail'),
         visibility: read(row, 'visibility').toLowerCase() === 'privada' ? 'privada' as const : 'publica' as const,
         sort_order: Number.isFinite(sort) ? sort : 100,
       }];
-    }).sort(compareRecordsById);
+    });
+    const sectorValues = rows.slice(1).map((row) => {
+      const id = read(row, 'id');
+      const title = read(row, 'title');
+      if (!id || !title) return [read(row, 'sector')];
+      return [records.find((record) => record.id === id)?.sector || 'Sin clasificar'];
+    });
+    const missingSectorValues = rows.slice(1).some((row, offset) => {
+      const id = read(row, 'id');
+      const title = read(row, 'title');
+      return Boolean(id && title && read(row, 'sector') !== sectorValues[offset][0]);
+    });
+    if (missingSectorValues && sectorValues.length) {
+      const sectorRange = encodeURIComponent(`'${employmentSheetName}'!K2:K${sectorValues.length + 1}`);
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}/values/${sectorRange}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: sectorValues }),
+      });
+    }
+    return records.sort(compareRecordsById);
   }
 
   async getEmploymentRecords(publicOnly = false): Promise<EmploymentRecord[]> {
@@ -927,7 +1031,7 @@ export class SheetsRepositoryService {
     const token = await this.getServiceAccountAccessToken();
     await this.ensureEmploymentSheet(token);
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId!)}`;
-    const range = encodeURIComponent(`'${employmentSheetName}'!A1:J1000`);
+    const range = encodeURIComponent(`'${employmentSheetName}'!A1:K1000`);
     const clearRes = await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     if (!clearRes.ok) throw new Error(`No se pudo limpiar la hoja laboral (HTTP ${clearRes.status}).`);
     const values = [[...EMPLOYMENT_HEADERS], ...sortRecordsById(records).map((record) => this.employmentRecordToRow(record))];
@@ -1043,6 +1147,54 @@ export class SheetsRepositoryService {
   async getProjectRecords(publicOnly = false): Promise<ProjectRecord[]> {
     const records = await this.readProjectRecords();
     return sortProjectRecords(publicOnly ? records.filter((record) => record.visibility === 'publica') : records);
+  }
+
+  async getCommunityManagementRecords(publicOnly = true): Promise<CommunityManagementRecord[]> {
+    const { spreadsheetId, communityManagementsSheetName } = this.config.googleSheets;
+    if (!this.isSheetsConfigured() || !spreadsheetId) {
+      throw new Error('Google Sheets no está configurado en este servidor.');
+    }
+
+    const token = await this.getServiceAccountAccessToken();
+    const escapedSheetName = communityManagementsSheetName.replace(/'/g, "''");
+    const range = encodeURIComponent(`'${escapedSheetName}'!A1:H1000`);
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) {
+      throw new Error(`No se pudieron leer las gestiones realizadas (HTTP ${response.status}).`);
+    }
+
+    const body = (await response.json()) as { values?: string[][] };
+    const rows = body.values || [];
+    const headers = (rows[0] || []).map((value) => value.trim().toLowerCase());
+    const index = (name: string) => headers.indexOf(name);
+    if (COMMUNITY_MANAGEMENT_HEADERS.some((header) => index(header) < 0)) {
+      throw new Error(`La hoja ${communityManagementsSheetName} requiere las columnas: ${COMMUNITY_MANAGEMENT_HEADERS.join(', ')}.`);
+    }
+
+    const read = (row: string[], name: string) => String(row[index(name)] ?? '').trim();
+    const records = rows.slice(1).flatMap((row): CommunityManagementRecord[] => {
+      const id = read(row, 'id');
+      const title = read(row, 'title');
+      if (!id || !title) return [];
+      const sortOrder = Number(read(row, 'sort_order'));
+      return [{
+        id,
+        title,
+        category: read(row, 'category'),
+        chronology: read(row, 'chronology'),
+        status: read(row, 'status'),
+        detail: read(row, 'detail'),
+        visibility: read(row, 'visibility').toLowerCase() === 'privada' ? 'privada' : 'publica',
+        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
+      }];
+    });
+
+    return records
+      .filter((record) => !publicOnly || record.visibility === 'publica')
+      .sort((a, b) => a.sort_order - b.sort_order);
   }
 
   private async writeProjectRecords(records: ProjectRecord[]): Promise<void> {

@@ -152,58 +152,6 @@ export function AdminOverviewTab({ records, sheetsStatus, settings, onSettingsSa
           </div>
         )}
 
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-[var(--text-ink)]">
-            Descripciones de la página Proyectos
-          </h3>
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-1">
-              <label htmlFor="proj-jac" className="block text-xs font-medium text-[var(--text-ink)]">
-                Junta de Acción Comunal
-              </label>
-              <textarea
-                id="proj-jac"
-                rows={3}
-                value={form.projects.jacSummary}
-                onChange={(e) =>
-                  setForm({ ...form, projects: { ...form.projects, jacSummary: e.target.value } })
-                }
-                className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="proj-nexus" className="block text-xs font-medium text-[var(--text-ink)]">
-                Nexus Web Studio
-              </label>
-              <textarea
-                id="proj-nexus"
-                rows={3}
-                value={form.projects.nexusSummary}
-                onChange={(e) =>
-                  setForm({ ...form, projects: { ...form.projects, nexusSummary: e.target.value } })
-                }
-                className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="proj-edil" className="block text-xs font-medium text-[var(--text-ink)]">
-                Aspiración y campaña política para edil
-              </label>
-              <textarea
-                id="proj-edil"
-                rows={3}
-                value={form.projects.edilSummary}
-                onChange={(e) =>
-                  setForm({ ...form, projects: { ...form.projects, edilSummary: e.target.value } })
-                }
-                className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-ink)]"
-              />
-            </div>
-          </div>
-        </div>
-
         <div className="space-y-3 border-t border-[var(--border-hairline)] pt-5">
           <h3 className="text-sm font-semibold text-[var(--text-ink)]">
             Enlaces editables a redes sociales

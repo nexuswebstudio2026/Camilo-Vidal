@@ -9,14 +9,14 @@ import { AutomationsService } from './server/ai/automations.service.js';
 import { AuthService, type AuthenticatedRequest } from './server/auth/auth.service.js';
 import { loadServerConfig } from './server/config/env.js';
 import { SheetsRepositoryService } from './server/sheets/sheets.service.js';
-import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, ProjectRecord, ProjectRecordType, RecordVisibility } from './shared/types';
+import type { AcademicRecord, AcademicRecordType, EmploymentRecord, EmploymentRecordType, EmploymentSector, ProjectRecord, ProjectRecordType, RecordVisibility } from './shared/types';
 import {
   validatePoliticalRecordInput,
   validateSiteSettingsInput,
 } from './server/validation/records.js';
 
 const academicRecordTypes: AcademicRecordType[] = [
-  'Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Diplomado', 'Área de conocimiento', 'Otro',
+  'Primaria', 'Bachillerato', 'Pregrado', 'Posgrado', 'Curso', 'Seminario', 'Diplomado', 'Área de conocimiento', 'Otro',
 ];
 
 function validateAcademicInput(raw: Record<string, unknown>): Omit<AcademicRecord, 'id'> | null {
@@ -27,37 +27,46 @@ function validateAcademicInput(raw: Record<string, unknown>): Omit<AcademicRecor
   const title = clean(raw.title, 180);
   const status = clean(raw.status, 100);
   const detail = clean(raw.detail, 2500);
+  const supportUrl = clean(raw.support_url, 500);
   const sortOrder = Number(raw.sort_order);
   const rawVisibility = clean(raw.visibility, 20).toLowerCase();
   if (!academicRecordTypes.includes(type) || title.length < 2 || !status || detail.length < 5 ||
       !Number.isFinite(sortOrder) || sortOrder < 0 || sortOrder > 9999 ||
       !['publica', 'privada'].includes(rawVisibility)) return null;
+  if (supportUrl) {
+    try {
+      const parsed = new URL(supportUrl);
+      if (parsed.protocol !== 'https:' || !['drive.google.com', 'docs.google.com'].includes(parsed.hostname)) return null;
+    } catch { return null; }
+  }
   return {
     type, title, institution: clean(raw.institution, 180),
     chronology_start: clean(raw.chronology_start, 120), chronology_end: clean(raw.chronology_end, 120),
-    status, detail, visibility: rawVisibility as RecordVisibility, sort_order: Math.round(sortOrder),
+    status, detail, support_url: supportUrl, visibility: rawVisibility as RecordVisibility, sort_order: Math.round(sortOrder),
   };
 }
 
 const employmentRecordTypes: EmploymentRecordType[] = [
   'Empleado', 'Independiente', 'Contratista', 'Cargo público', 'Emprendimiento', 'Otro',
 ];
+const employmentSectors: EmploymentSector[] = ['Público', 'Privado', 'Comunitario', 'Sin clasificar'];
 
 function validateEmploymentInput(raw: Record<string, unknown>): Omit<EmploymentRecord, 'id'> | null {
   const clean = (value: unknown, max = 2000) => typeof value === 'string'
     ? value.replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max)
     : '';
   const type = clean(raw.type, 80) as EmploymentRecordType;
+  const sector = clean(raw.sector, 40) as EmploymentSector;
   const title = clean(raw.title, 180);
   const status = clean(raw.status, 100);
   const detail = clean(raw.detail, 2500);
   const sortOrder = Number(raw.sort_order);
   const rawVisibility = clean(raw.visibility, 20).toLowerCase();
-  if (!employmentRecordTypes.includes(type) || title.length < 2 || !status || detail.length < 5 ||
+  if (!employmentRecordTypes.includes(type) || !employmentSectors.includes(sector) || title.length < 2 || !status || detail.length < 5 ||
       !Number.isFinite(sortOrder) || sortOrder < 0 || sortOrder > 9999 ||
       !['publica', 'privada'].includes(rawVisibility)) return null;
   return {
-    type, title, organization: clean(raw.organization, 180),
+    type, sector, title, organization: clean(raw.organization, 180),
     chronology_start: clean(raw.chronology_start, 120), chronology_end: clean(raw.chronology_end, 120),
     status, detail, visibility: rawVisibility as RecordVisibility, sort_order: Math.round(sortOrder),
   };
@@ -166,6 +175,16 @@ export async function createApp(options: { includeFrontend?: boolean } = {}) {
       res.json({ records: await sheetsService.getProjectRecords(true) });
     } catch {
       res.status(503).json({ error: 'No fue posible cargar los proyectos desde Google Sheets.' });
+    }
+  });
+
+  app.get('/api/public/community-managements', async (_req, res) => {
+    try {
+      res.json({ records: await sheetsService.getCommunityManagementRecords(true) });
+    } catch (error) {
+      res.status(503).json({
+        error: error instanceof Error ? error.message : 'No fue posible cargar las gestiones desde Google Sheets.',
+      });
     }
   });
 

@@ -1,12 +1,14 @@
 import { BriefcaseBusiness, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { EmploymentRecord, EmploymentRecordType, RecordVisibility } from '../../../shared/types';
+import type { EmploymentRecord, EmploymentRecordType, EmploymentSector, RecordVisibility } from '../../../shared/types';
 import { sortRecordsById } from '../../../shared/employment';
 import { useAuth } from '../../context/AuthContext';
 
 const TYPES: EmploymentRecordType[] = ['Empleado', 'Independiente', 'Contratista', 'Cargo público', 'Emprendimiento', 'Otro'];
+const SECTORS: EmploymentSector[] = ['Público', 'Privado', 'Comunitario', 'Sin clasificar'];
 const EMPTY = {
   type: 'Empleado' as EmploymentRecordType,
+  sector: 'Sin clasificar' as EmploymentSector,
   title: '',
   organization: '',
   chronology_start: '',
@@ -72,6 +74,7 @@ export function AdminEmploymentCrudTab() {
     setEditingId(record.id);
     setForm({
       type: record.type,
+      sector: record.sector,
       title: record.title,
       organization: record.organization,
       chronology_start: record.chronology_start,
@@ -126,6 +129,11 @@ export function AdminEmploymentCrudTab() {
             {TYPES.map((type) => <option key={type}>{type}</option>)}
           </select>
         </label>
+        <label className="block space-y-1 text-xs font-medium">Sector
+          <select value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value as EmploymentSector })} className="w-full px-3 py-2 text-sm rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)]">
+            {SECTORS.map((sector) => <option key={sector}>{sector}</option>)}
+          </select>
+        </label>
         {field('title', 'Cargo o actividad')}
         {field('organization', 'Empresa, entidad u organización')}
         {field('chronology_start', 'Inicio (fecha o periodo)')}
@@ -149,7 +157,7 @@ export function AdminEmploymentCrudTab() {
     <section className="space-y-4">
       <h2 className="font-editorial text-2xl font-semibold">Registros almacenados ({records.length})</h2>
       {loading ? <p className="text-sm text-[var(--text-muted)]">Cargando registros de Google Sheets…</p> : records.length === 0 ? <p className="p-6 rounded-xl border border-[var(--border-hairline)] text-sm text-[var(--text-muted)]">Aún no hay registros laborales.</p> : <ul className="space-y-3">{records.map((record) => <li key={record.id} className="p-5 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] flex flex-col sm:flex-row justify-between gap-4">
-        <div className="space-y-1"><p className="text-xs text-[var(--accent-gold)]">#{record.id} · {record.type} · {record.status} · {record.visibility} · Orden {record.sort_order}</p><h3 className="font-editorial text-xl font-semibold">{record.title}</h3><p className="text-sm text-[var(--text-muted)]">{record.organization} {[record.chronology_start, record.chronology_end].filter(Boolean).join(' – ')}</p><p className="text-sm text-[var(--text-muted)]">{record.detail}</p></div>
+        <div className="space-y-1"><p className="text-xs text-[var(--accent-gold)]">#{record.id} · {record.type} · Sector {record.sector} · {record.status} · {record.visibility} · Orden {record.sort_order}</p><h3 className="font-editorial text-xl font-semibold">{record.title}</h3><p className="text-sm text-[var(--text-muted)]">{record.organization} {[record.chronology_start, record.chronology_end].filter(Boolean).join(' – ')}</p><p className="text-sm text-[var(--text-muted)]">{record.detail}</p></div>
         <div className="flex gap-2 shrink-0"><button type="button" onClick={() => edit(record)} className="inline-flex items-center gap-1 rounded-md border border-[var(--border-hairline)] px-3 py-2 text-xs"><Pencil className="w-3.5 h-3.5"/>Editar</button><button type="button" onClick={() => void remove(record)} className="inline-flex items-center gap-1 rounded-md border border-[var(--status-error)] px-3 py-2 text-xs text-[var(--status-error)]"><Trash2 className="w-3.5 h-3.5"/>Eliminar</button></div>
       </li>)}</ul>}
     </section>
