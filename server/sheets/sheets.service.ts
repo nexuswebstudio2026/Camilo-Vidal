@@ -828,6 +828,7 @@ export class SheetsRepositoryService {
         sort_order: Number.isFinite(sort) ? sort : 100,
       }];
     }).sort((a, b) => a.sort_order - b.sort_order);
+    return records;
   }
 
   async getAcademicRecords(publicOnly = false): Promise<AcademicRecord[]> {
